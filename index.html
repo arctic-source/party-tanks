@@ -205,6 +205,7 @@
   var POWER_RATE = 45; // units/sec while held
   var POWER_TO_SPEED = 7.2; // maps power units -> initial bullet speed px/s
   var TANK_HALF_W = 20, TANK_HALF_H = 12;
+  var ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
   var TREE_BASE_HEIGHT = 40; // px at scale 1
   var TREE_CANOPY_FRAC = 0.52; // fraction of height above ground used as hit-circle center
   var TREE_RADIUS_FRAC = 0.30; // fraction of height used as hit-circle radius
@@ -317,6 +318,24 @@
     for (var i = 0; i < count; i++) bgTrees.push({ rx: Math.random() * 3000, scale: 0.8 + Math.random() * 0.6 });
   }
 
+  // ---------- Clouds ----------
+  // Static (non-drifting) foreground clouds living high up in the extended
+  // sky. yFrac is a fraction of VIEW_H, same resolution-independent
+  // convention as terrain, so they stay correctly placed on resize.
+  var clouds = [];
+
+  function generateClouds() {
+    clouds = [];
+    var count = randInt(6, 10);
+    for (var i = 0; i < count; i++) {
+      clouds.push({
+        x: Math.random() * WORLD_W,
+        yFrac: -0.75 - Math.random() * 0.35,
+        scale: 0.8 + Math.random() * 0.7
+      });
+    }
+  }
+
   // ---------- Game state ----------
   var players; // array of 2 tank states
   var active = 0;
@@ -324,8 +343,17 @@
   var bullet = null;
   var impactFlash = null; // {x, y, t}
   var lastImpact = [null, null]; // per-player last shot landing spot {x, y, hitTank}
-  var camX = 0, camY = 0;
-  var dragging = false, dragStartX = 0, dragStartY = 0, dragStartCamX = 0, dragStartCamY = 0, dragMoved = false;
+
+  // Camera: camCenterX/Y is the world point shown at the center of the
+  // screen; camZoom scales world units to screen pixels. This center+zoom
+  // model makes pinch-to-zoom straightforward (zoom around the pinch
+  // midpoint) compared to a top-left-origin camera.
+  var camCenterX = 0, camCenterY = 0, camZoom = 1;
+  var activePointers = {}; // pointerId -> {x, y}
+  var gestureMode = null; // null | 'pan' | 'pinch'
+  var dragStartX = 0, dragStartY = 0, dragStartCamX = 0, dragStartCamY = 0;
+  var pinchStartDist = 1, pinchStartZoom = 1, pinchAnchorWorldX = 0, pinchAnchorWorldY = 0;
+
   var mountainSeed1 = 0, mountainSeed2 = 0;
 
   function newTank(idx) {
@@ -355,23 +383,48 @@
     mountainSeed2 = Math.random() * 1000;
     generateTrees([players[0].x, players[1].x]);
     generateBgTrees();
+    generateClouds();
+    camZoom = 1;
     centerCameraOnActive();
     updateTurnUI();
     hideToast();
     document.getElementById("overlay").classList.remove("show");
   }
 
+  // Terrain/cloud heights are stored as fractions of VIEW_H with worldY=0
+  // meaning "top of the classic (pre-zoom) viewport" - so the camera's
+  // default vertical framing has to put worldY=0 at the screen top, i.e.
+  // center on worldY = VIEW_H/2, not on worldY = 0.
+  function defaultCamCenterY() { return VIEW_H / 2; }
+
   function centerCameraOnActive() {
-    camX = players[active].x - VIEW_W / 2;
-    camY = 0;
+    camCenterX = players[active].x;
+    camCenterY = defaultCamCenterY();
     clampCam();
   }
 
+  function recenterView() {
+    camZoom = 1;
+    centerCameraOnActive();
+  }
+
   function clampCam() {
-    camX = Math.max(0, Math.min(WORLD_W - VIEW_W, camX));
-    if (WORLD_W < VIEW_W) camX = -(VIEW_W - WORLD_W) / 2;
-    var camYMin = -VIEW_H * 0.6, camYMax = VIEW_H * 0.6;
-    camY = Math.max(camYMin, Math.min(camYMax, camY));
+    var halfW = (VIEW_W / 2) / camZoom;
+    if (WORLD_W > halfW * 2) {
+      camCenterX = Math.max(halfW, Math.min(WORLD_W - halfW, camCenterX));
+    } else {
+      camCenterX = WORLD_W / 2;
+    }
+    var base = defaultCamCenterY();
+    var camYMin = base - VIEW_H * 2.0, camYMax = base + VIEW_H * 1.4;
+    camCenterY = Math.max(camYMin, Math.min(camYMax, camCenterY));
+  }
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: camCenterX + (sx - VIEW_W / 2) / camZoom,
+      y: camCenterY + (sy - VIEW_H / 2) / camZoom
+    };
   }
 
   // ---------- Input: buttons (press-and-hold) ----------
@@ -399,7 +452,7 @@
   });
   document.getElementById("recenterBtn").addEventListener("pointerdown", function (e) {
     e.preventDefault();
-    centerCameraOnActive();
+    recenterView();
   });
   document.getElementById("newMatchBtn").addEventListener("pointerdown", function (e) {
     e.preventDefault();
@@ -419,27 +472,70 @@
     }
   });
 
-  // ---------- Input: drag to pan map ----------
+  // ---------- Input: drag to pan, pinch to zoom ----------
+  function pointerIds() { return Object.keys(activePointers); }
+  function ptrDist(idA, idB) {
+    var a = activePointers[idA], b = activePointers[idB];
+    return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+  function ptrMid(idA, idB) {
+    var a = activePointers[idA], b = activePointers[idB];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  }
+  function beginPan(id) {
+    gestureMode = "pan";
+    dragStartX = activePointers[id].x;
+    dragStartY = activePointers[id].y;
+    dragStartCamX = camCenterX;
+    dragStartCamY = camCenterY;
+  }
+
   canvasWrap.addEventListener("pointerdown", function (e) {
     if (state === "gameover") return;
-    dragging = true; dragMoved = false;
-    dragStartX = e.clientX;
-    dragStartY = e.clientY;
-    dragStartCamX = camX;
-    dragStartCamY = camY;
+    activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = pointerIds();
+    if (ids.length === 2) {
+      gestureMode = "pinch";
+      pinchStartDist = ptrDist(ids[0], ids[1]);
+      pinchStartZoom = camZoom;
+      var mid = ptrMid(ids[0], ids[1]);
+      var w = screenToWorld(mid.x, mid.y);
+      pinchAnchorWorldX = w.x;
+      pinchAnchorWorldY = w.y;
+    } else if (ids.length === 1) {
+      beginPan(ids[0]);
+    }
   });
   canvasWrap.addEventListener("pointermove", function (e) {
-    if (!dragging) return;
-    var dx = e.clientX - dragStartX;
-    var dy = e.clientY - dragStartY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragMoved = true;
-    camX = dragStartCamX - dx;
-    camY = dragStartCamY - dy;
-    clampCam();
+    if (!(e.pointerId in activePointers)) return;
+    activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = pointerIds();
+    if (gestureMode === "pinch" && ids.length === 2) {
+      var dist = ptrDist(ids[0], ids[1]);
+      camZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * (dist / pinchStartDist)));
+      var mid = ptrMid(ids[0], ids[1]);
+      camCenterX = pinchAnchorWorldX - (mid.x - VIEW_W / 2) / camZoom;
+      camCenterY = pinchAnchorWorldY - (mid.y - VIEW_H / 2) / camZoom;
+      clampCam();
+    } else if (gestureMode === "pan" && ids.length === 1) {
+      var dx = e.clientX - dragStartX;
+      var dy = e.clientY - dragStartY;
+      camCenterX = dragStartCamX - dx / camZoom;
+      camCenterY = dragStartCamY - dy / camZoom;
+      clampCam();
+    }
   });
-  function endDrag() { dragging = false; }
-  canvasWrap.addEventListener("pointerup", endDrag);
-  canvasWrap.addEventListener("pointercancel", endDrag);
+  function releasePointer(e) {
+    delete activePointers[e.pointerId];
+    var ids = pointerIds();
+    if (ids.length === 1) {
+      beginPan(ids[0]);
+    } else {
+      gestureMode = null;
+    }
+  }
+  canvasWrap.addEventListener("pointerup", releasePointer);
+  canvasWrap.addEventListener("pointercancel", releasePointer);
 
   // ---------- Firing ----------
   function fire() {
@@ -570,8 +666,8 @@
       bullet.y += bullet.vy * dt;
 
       // camera follows bullet
-      camX = bullet.x - VIEW_W / 2;
-      camY = bullet.y - VIEW_H / 2;
+      camCenterX = bullet.x;
+      camCenterY = bullet.y;
       clampCam();
 
       var defender = players[1 - active];
@@ -611,10 +707,42 @@
   }
 
   // ---------- Render ----------
+  // Sky/mountains are drawn in plain screen space (not the world zoom/pan
+  // transform) - the backdrop doesn't magnify with zoom, only the world
+  // layer does. The gradient's colors are still altitude-aware: panning up
+  // into the taller sky shifts the sampled colors toward a darker blue.
+  function skyColorAt(worldY) {
+    var f = worldY / VIEW_H;
+    var dark = [0x22, 0x34, 0x5c];
+    var top = [0x7f, 0xa8, 0xcf];
+    var bot = [0xc9, 0xdc, 0xed];
+    var c;
+    if (f <= 0) {
+      var t = Math.max(0, Math.min(1, (f + 1.4) / 1.4));
+      c = lerpColor(dark, top, t);
+    } else {
+      c = lerpColor(top, bot, Math.max(0, Math.min(1, f)));
+    }
+    return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
+  }
+  function lerpColor(a, b, t) {
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t)
+    ];
+  }
+
   function drawBackground() {
+    var halfH = (VIEW_H / 2) / camZoom;
+    var worldTop = camCenterY - halfH;
+    var worldBottom = camCenterY + halfH;
     var g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
-    g.addColorStop(0, "#7fa8cf");
-    g.addColorStop(1, "#c9dced");
+    var stops = 6;
+    for (var i = 0; i <= stops; i++) {
+      var f = i / stops;
+      g.addColorStop(f, skyColorAt(worldTop + (worldBottom - worldTop) * f));
+    }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
@@ -630,7 +758,7 @@
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.fillStyle = color;
-    var parallax = camX * parallaxFactor;
+    var parallax = camCenterX * parallaxFactor;
     ctx.beginPath();
     ctx.moveTo(0, VIEW_H);
     for (var x = 0; x <= VIEW_W; x += 30) {
@@ -656,16 +784,17 @@
   }
 
   function drawTerrain() {
-    var x0 = Math.max(0, Math.floor(camX));
-    var x1 = Math.min(WORLD_W, Math.ceil(camX + VIEW_W));
-    var bottom = VIEW_H * 2; // extends past the canvas regardless of vertical pan
+    var halfW = (VIEW_W / 2) / camZoom;
+    var x0 = Math.max(0, Math.floor(camCenterX - halfW));
+    var x1 = Math.min(WORLD_W, Math.ceil(camCenterX + halfW));
+    var bottom = 20000; // always far below any pannable/zoomed-out range
 
     ctx.beginPath();
-    ctx.moveTo(x0 - camX, bottom);
+    ctx.moveTo(x0, bottom);
     for (var x = x0; x <= x1; x += 2) {
-      ctx.lineTo(x - camX, terrainHeightAt(x));
+      ctx.lineTo(x, terrainHeightAt(x));
     }
-    ctx.lineTo(x1 - camX, bottom);
+    ctx.lineTo(x1, bottom);
     ctx.closePath();
     ctx.fillStyle = "#6b4a2f"; // brown body
     ctx.fill();
@@ -675,17 +804,16 @@
     var first = true;
     for (var xg = x0; xg <= x1; xg += 2) {
       var hy = terrainHeightAt(xg);
-      if (first) { ctx.moveTo(xg - camX, hy); first = false; }
-      else ctx.lineTo(xg - camX, hy);
+      if (first) { ctx.moveTo(xg, hy); first = false; }
+      else ctx.lineTo(xg, hy);
     }
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 6 / camZoom;
     ctx.strokeStyle = "#3f8f3f";
     ctx.stroke();
   }
 
   function drawTank(p) {
-    var sx = p.x - camX;
-    if (sx < -40 || sx > VIEW_W + 40) return;
+    var sx = p.x;
     var groundY = terrainHeightAt(p.x);
     var cy = groundY - TANK_HALF_H;
 
@@ -695,7 +823,7 @@
     // body
     ctx.fillStyle = p.color;
     ctx.strokeStyle = p.colorDark;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 / camZoom;
     roundRect(-TANK_HALF_W, -TANK_HALF_H, TANK_HALF_W * 2, TANK_HALF_H * 2, 5);
     ctx.fill(); ctx.stroke();
 
@@ -710,7 +838,7 @@
     var bx = Math.cos(rad) * dir;
     var by = -Math.sin(rad);
     ctx.strokeStyle = p.colorDark;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 5 / camZoom;
     ctx.beginPath();
     ctx.moveTo(0, -4);
     ctx.lineTo(bx * 26, -4 + by * 26);
@@ -722,7 +850,7 @@
     if (state === "aim" && p.idx === active) {
       var len = 20 + (p.power / POWER_MAX) * 55;
       ctx.strokeStyle = "rgba(255,255,60,0.9)";
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 / camZoom;
       ctx.beginPath();
       ctx.moveTo(sx, cy - 4);
       ctx.lineTo(sx + bx * len, cy - 4 + by * len);
@@ -762,7 +890,7 @@
     if (!bullet) return;
     ctx.fillStyle = "#1a1a1a";
     ctx.beginPath();
-    ctx.arc(bullet.x - camX, bullet.y, 4, 0, Math.PI * 2);
+    ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -773,7 +901,7 @@
     ctx.globalAlpha = Math.max(0, impactFlash.t / 0.5);
     ctx.fillStyle = "#ffdd55";
     ctx.beginPath();
-    ctx.arc(impactFlash.x - camX, impactFlash.y, r, 0, Math.PI * 2);
+    ctx.arc(impactFlash.x, impactFlash.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -803,8 +931,7 @@
   }
 
   function drawTree(t) {
-    var sx = t.x - camX;
-    if (sx < -30 || sx > VIEW_W + 30) return;
+    var sx = t.x;
     var groundY = terrainHeightAt(t.x);
     var h = TREE_BASE_HEIGHT * t.scale;
 
@@ -831,12 +958,11 @@
     for (var i = 0; i < lastImpact.length; i++) {
       var mark = lastImpact[i];
       if (!mark || mark.hitTank) continue;
-      var mx = mark.x - camX;
-      if (mx < -12 || mx > VIEW_W + 12) continue;
+      var mx = mark.x;
       ctx.save();
       ctx.strokeStyle = players[i].color;
       ctx.globalAlpha = 0.85;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 / camZoom;
       var r = 7;
       ctx.beginPath();
       ctx.moveTo(mx - r, mark.y - r); ctx.lineTo(mx + r, mark.y + r);
@@ -846,10 +972,33 @@
     }
   }
 
+  function drawCloud(c) {
+    var y = c.yFrac * VIEW_H;
+    var s = 26 * c.scale;
+    var lobes = [
+      [-0.7, 0, 0.55], [0, -0.25, 0.7], [0.7, 0, 0.55], [-0.15, 0.2, 0.6], [0.55, 0.15, 0.5]
+    ];
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#ffffff";
+    lobes.forEach(function (l) {
+      ctx.beginPath();
+      ctx.arc(c.x + l[0] * s, y + l[1] * s, l[2] * s, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawClouds() {
+    clouds.forEach(drawCloud);
+  }
+
   function render() {
     drawBackground();
     ctx.save();
-    ctx.translate(0, -camY);
+    ctx.translate(VIEW_W / 2, VIEW_H / 2);
+    ctx.scale(camZoom, camZoom);
+    ctx.translate(-camCenterX, -camCenterY);
     drawTerrain();
     drawImpactMarks();
     drawTrees("ash");
@@ -858,6 +1007,7 @@
     drawTrees("burning");
     drawBullet();
     drawFlash();
+    drawClouds();
     ctx.restore();
   }
 
