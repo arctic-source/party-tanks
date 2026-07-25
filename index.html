@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Party Tanks</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1b1f27">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="icons/icon-192.png">
 <style>
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%;
@@ -17,25 +24,25 @@
   #bar {
     flex: 0 0 auto;
     display: flex; align-items: center;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 5px;
+    padding: 3px 5px;
     background: #1b1f27;
-    border-bottom: 2px solid #000;
+    border-bottom: 1px solid #000;
     box-sizing: border-box;
     z-index: 10;
   }
-  .cluster { display: flex; align-items: center; gap: 4px; }
-  .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .grp-label { font-size: 9px; color: #9aa; letter-spacing: .05em; }
-  .pair { display: flex; gap: 4px; }
+  .cluster { display: flex; align-items: center; gap: 3px; }
+  .grp { display: flex; align-items: center; gap: 3px; }
+  .grp-label { font-size: 9px; color: #9aa; letter-spacing: .02em; white-space: nowrap; }
+  .pair { display: flex; gap: 3px; }
 
   button.ctl {
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
-    border: none; border-radius: 8px;
+    border: none; border-radius: 6px;
     background: #33394a; color: #fff;
-    font-size: 18px; font-weight: bold;
-    width: 44px; height: 44px;
+    font-size: 15px; font-weight: bold;
+    width: 34px; height: 34px;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 0 #14161c;
   }
@@ -43,23 +50,26 @@
   button.ctl:disabled { opacity: .35; }
 
   #fireBtn {
-    width: 64px; height: 44px; border-radius: 8px;
-    background: #a8321f; font-size: 14px; letter-spacing: .05em;
+    width: 52px; height: 34px; border-radius: 6px;
+    background: #a8321f; font-size: 12px; letter-spacing: .04em;
   }
   #fireBtn:active, #fireBtn.held { background: #d1432c; }
 
-  #recenterBtn { width: 44px; height: 44px; font-size: 14px; background: #2a5d4a; }
+  #recenterBtn { width: 34px; height: 34px; font-size: 13px; background: #2a5d4a; }
   #recenterBtn:active { background: #367a61; }
+
+  #fsBtn { width: 34px; height: 34px; font-size: 13px; background: #3a3a3a; }
+  #fsBtn:active { background: #555; }
 
   #status {
     flex: 1 1 auto;
     display: flex; flex-direction: column; justify-content: center;
-    gap: 3px;
-    min-width: 90px;
-    color: #fff; font-size: 12px;
+    gap: 2px;
+    min-width: 70px;
+    color: #fff; font-size: 11px;
   }
-  #turnLabel { font-weight: bold; font-size: 13px; }
-  .fuelWrap { width: 100%; height: 7px; background: #10131a; border-radius: 4px; overflow: hidden; }
+  #turnLabel { font-weight: bold; font-size: 11px; }
+  .fuelWrap { width: 100%; height: 5px; background: #10131a; border-radius: 3px; overflow: hidden; }
   #fuelFill { height: 100%; width: 100%; background: #e0b93a; transition: width .05s linear; }
 
   #canvasWrap { flex: 1 1 auto; position: relative; overflow: hidden; }
@@ -96,6 +106,7 @@
 <body>
 <div id="app">
   <div id="bar">
+    <button class="ctl" id="fsBtn" aria-label="Toggle fullscreen">&#10021;</button>
     <div class="cluster">
       <div class="grp">
         <div class="grp-label">MOVE</div>
@@ -299,6 +310,19 @@
   document.getElementById("newMatchBtn").addEventListener("pointerdown", function (e) {
     e.preventDefault();
     startMatch();
+  });
+
+  // ---------- Fullscreen toggle ----------
+  document.getElementById("fsBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function () {});
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch(function () {});
+      }
+    } else {
+      document.exitFullscreen().catch(function () {});
+    }
   });
 
   // ---------- Input: drag to pan map ----------
@@ -599,6 +623,10 @@
     requestAnimationFrame(frame);
   }
   boot();
+
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
 })();
 </script>
 </body>
