@@ -115,53 +115,178 @@
     z-index: 15; box-shadow: 0 3px 10px rgba(0,0,0,.4);
   }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- Pre-game screens ---------- */
+  .screen {
+    display: none;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .screen.show { display: flex; }
+
+  #screenWelcome, #screenRounds {
+    align-items: center; justify-content: center;
+    gap: 22px; color: #fff; text-align: center;
+    padding: 20px; box-sizing: border-box;
+    background: #10131a;
+  }
+  .titleLogo { font-size: 34px; margin: 0; letter-spacing: .02em; }
+  .screenTitle { margin: 6px 0 0; font-size: 18px; color: #fff; text-align: center; }
+
+  .bigBtn {
+    font-size: 17px; font-weight: bold; color: #fff;
+    padding: 12px 30px; border-radius: 10px; border: none;
+    background: #2a5d4a;
+  }
+  .bigBtn:active { background: #367a61; }
+  .bigBtn.secondary { background: #33394a; }
+  .bigBtn.secondary:active { background: #4c5570; }
+
+  #screenPlayers {
+    color: #fff; background: #10131a;
+    padding: 10px 14px; box-sizing: border-box; gap: 8px;
+  }
+  .playerRows {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 2px;
+  }
+  .playerRow {
+    display: flex; align-items: center; gap: 8px;
+    background: #1b1f27; border-radius: 8px; padding: 6px 8px;
+    flex: 0 0 auto;
+  }
+  .playerRow.slotDisabled { opacity: .38; pointer-events: none; }
+  .slotNum { font-size: 11px; color: #9aa; width: 14px; text-align: center; flex: 0 0 auto; }
+  .nameInput {
+    flex: 1 1 auto; min-width: 0;
+    background: #0e1016; color: #fff; border: 1px solid #333a4a;
+    border-radius: 6px; padding: 7px 8px; font-size: 13px;
+  }
+  .colorSwatches { display: flex; gap: 3px; flex: 0 0 auto; }
+  .swatchBtn {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent;
+    padding: 0; flex: 0 0 auto;
+  }
+  .swatchBtn.selected { border-color: #fff; }
+  .swatchBtn:disabled { opacity: .25; }
+  .modeToggle { display: flex; gap: 3px; flex: 0 0 auto; }
+  .modeBtn {
+    font-size: 11px; font-weight: bold; color: #fff; border: none;
+    padding: 6px 9px; border-radius: 6px; background: #33394a;
+  }
+  .modeBtn.active { background: #2a5d4a; }
+  .modeBtn:disabled { opacity: .35; }
+
+  .screenNav { display: flex; gap: 10px; justify-content: center; flex: 0 0 auto; padding-top: 4px; }
+
+  .configRows { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 340px; }
+  .configRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .configLabel { font-size: 12px; color: #9aa; letter-spacing: .04em; }
+  .chipSelector { display: flex; align-items: center; gap: 8px; }
+  .chipArrow {
+    width: 30px; height: 30px; border-radius: 6px; border: none;
+    background: #33394a; color: #fff; font-size: 13px;
+  }
+  .chipArrow:disabled { opacity: .3; }
+  .chipValue { min-width: 110px; text-align: center; font-weight: bold; font-size: 14px; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="bar">
-    <button class="ctl" id="fsBtn" aria-label="Toggle fullscreen">&#10021;</button>
-    <div class="cluster">
-      <div class="grp">
-        <div class="grp-label">MOVE</div>
-        <div class="pair">
-          <button class="ctl" id="btnLeft" aria-label="Move left">&#9664;</button>
-          <button class="ctl" id="btnRight" aria-label="Move right">&#9654;</button>
-        </div>
-      </div>
-    </div>
+  <div id="screenWelcome" class="screen show">
+    <h1 class="titleLogo">Party Tanks</h1>
+    <button id="newGameBtn" class="bigBtn">New Game</button>
+  </div>
 
-    <div id="status">
-      <div id="turnLabel">Player 1's Turn</div>
-      <div class="fuelWrap"><div id="fuelFill"></div></div>
-    </div>
-
-    <div class="cluster">
-      <div class="grp">
-        <div class="grp-label">ANGLE <b id="angleVal">55</b>&deg;</div>
-        <div class="pair">
-          <button class="ctl" id="btnAngleDown">&#9660;</button>
-          <button class="ctl" id="btnAngleUp">&#9650;</button>
-        </div>
-      </div>
-      <div class="grp">
-        <div class="grp-label">POWER <b id="powerVal">55</b></div>
-        <div class="pair">
-          <button class="ctl" id="btnPowerDown">&minus;</button>
-          <button class="ctl" id="btnPowerUp">&plus;</button>
-        </div>
-      </div>
-      <button class="ctl" id="recenterBtn" aria-label="Recenter camera">&#8982;</button>
-      <button class="ctl" id="fireBtn" aria-label="Fire">FIRE</button>
+  <div id="screenPlayers" class="screen">
+    <h2 class="screenTitle">Players</h2>
+    <div id="playerRows" class="playerRows"></div>
+    <div class="screenNav">
+      <button id="playersNextBtn" class="bigBtn">Next</button>
     </div>
   </div>
 
-  <div id="canvasWrap">
-    <canvas id="c"></canvas>
-    <div id="toast"></div>
-    <div id="overlay">
-      <h1 id="winText">Player 1 Wins!</h1>
-      <button id="newMatchBtn">New Match</button>
+  <div id="screenRounds" class="screen">
+    <h2 class="screenTitle">Rounds &amp; Map</h2>
+    <div class="configRows">
+      <div class="configRow">
+        <div class="configLabel">ROUNDS</div>
+        <div class="chipSelector">
+          <button class="chipArrow" disabled>&#9664;</button>
+          <div class="chipValue">1</div>
+          <button class="chipArrow" disabled>&#9654;</button>
+        </div>
+      </div>
+      <div class="configRow">
+        <div class="configLabel">MAP</div>
+        <div class="chipSelector">
+          <button class="chipArrow" disabled>&#9664;</button>
+          <div class="chipValue">Chill Forest</div>
+          <button class="chipArrow" disabled>&#9654;</button>
+        </div>
+      </div>
+      <div class="configRow">
+        <div class="configLabel">WIND</div>
+        <div class="chipSelector">
+          <button class="chipArrow" disabled>&#9664;</button>
+          <div class="chipValue">None</div>
+          <button class="chipArrow" disabled>&#9654;</button>
+        </div>
+      </div>
+    </div>
+    <div class="screenNav">
+      <button id="roundsBackBtn" class="bigBtn secondary">Back</button>
+      <button id="startGameBtn" class="bigBtn">Start Game</button>
+    </div>
+  </div>
+
+  <div id="screenMatch" class="screen">
+    <div id="bar">
+      <button class="ctl" id="fsBtn" aria-label="Toggle fullscreen">&#10021;</button>
+      <div class="cluster">
+        <div class="grp">
+          <div class="grp-label">MOVE</div>
+          <div class="pair">
+            <button class="ctl" id="btnLeft" aria-label="Move left">&#9664;</button>
+            <button class="ctl" id="btnRight" aria-label="Move right">&#9654;</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="status">
+        <div id="turnLabel">Player 1's Turn</div>
+        <div class="fuelWrap"><div id="fuelFill"></div></div>
+      </div>
+
+      <div class="cluster">
+        <div class="grp">
+          <div class="grp-label">ANGLE <b id="angleVal">55</b>&deg;</div>
+          <div class="pair">
+            <button class="ctl" id="btnAngleDown">&#9660;</button>
+            <button class="ctl" id="btnAngleUp">&#9650;</button>
+          </div>
+        </div>
+        <div class="grp">
+          <div class="grp-label">POWER <b id="powerVal">55</b></div>
+          <div class="pair">
+            <button class="ctl" id="btnPowerDown">&minus;</button>
+            <button class="ctl" id="btnPowerUp">&plus;</button>
+          </div>
+        </div>
+        <button class="ctl" id="recenterBtn" aria-label="Recenter camera">&#8982;</button>
+        <button class="ctl" id="fireBtn" aria-label="Fire">FIRE</button>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <canvas id="c"></canvas>
+      <div id="toast"></div>
+      <div id="overlay">
+        <h1 id="winText">Player 1 Wins!</h1>
+        <button id="backToSetupBtn">Back to Setup</button>
+      </div>
     </div>
   </div>
 </div>
@@ -353,7 +478,170 @@
     }
   }
 
+  // ---------- Pre-game screens & player setup ----------
+  function showScreen(id) {
+    ["screenWelcome", "screenPlayers", "screenRounds", "screenMatch"].forEach(function (sid) {
+      var el = document.getElementById(sid);
+      if (el) el.classList.toggle("show", sid === id);
+    });
+  }
+
+  var COLOR_PALETTE = [
+    { name: "Red", body: "#d1432c", dark: "#8a2a1a" },
+    { name: "Blue", body: "#2f7fd1", dark: "#1e578f" },
+    { name: "Green", body: "#3fae4a", dark: "#276b2e" },
+    { name: "Purple", body: "#8a4fd1", dark: "#5a3389" },
+    { name: "Orange", body: "#e08a2e", dark: "#95591a" },
+    { name: "Yellow", body: "#d1c22f", dark: "#8a7f1e" },
+    { name: "Teal", body: "#2fb5ab", dark: "#1c716a" },
+    { name: "Pink", body: "#d1478f", dark: "#8a2e5c" }
+  ];
+  var PLAYER_SLOTS = 7;
+  var ACTIVE_SLOTS = 2;
+  var PLAYER_CONFIG_KEY = "partytanks.players.v1";
+
+  function defaultPlayerConfigs() {
+    var arr = [];
+    for (var i = 0; i < PLAYER_SLOTS; i++) {
+      arr.push({ name: "Player " + (i + 1), colorIndex: i % COLOR_PALETTE.length, mode: "human" });
+    }
+    return arr;
+  }
+
+  function loadPlayerConfigs() {
+    var defaults = defaultPlayerConfigs();
+    try {
+      var raw = localStorage.getItem(PLAYER_CONFIG_KEY);
+      if (!raw) return defaults;
+      var parsed = JSON.parse(raw);
+      for (var i = 0; i < PLAYER_SLOTS; i++) {
+        if (parsed[i] && typeof parsed[i].name === "string" && parsed[i].name.trim()) {
+          defaults[i].name = parsed[i].name.slice(0, 14);
+        }
+        if (parsed[i] && COLOR_PALETTE[parsed[i].colorIndex]) {
+          defaults[i].colorIndex = parsed[i].colorIndex;
+        }
+      }
+    } catch (e) {}
+    return defaults;
+  }
+
+  function savePlayerConfigs() {
+    try { localStorage.setItem(PLAYER_CONFIG_KEY, JSON.stringify(playerConfigs)); } catch (e) {}
+  }
+
+  var playerConfigs = loadPlayerConfigs();
+
+  function otherActiveColorIndex(i) {
+    return playerConfigs[i === 0 ? 1 : 0].colorIndex;
+  }
+
+  function renderSwatchesForSlot(i) {
+    var wrap = document.getElementById("swatches" + i);
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    var takenByOther = i < ACTIVE_SLOTS ? otherActiveColorIndex(i) : -1;
+    COLOR_PALETTE.forEach(function (c, j) {
+      var btn = document.createElement("button");
+      btn.className = "swatchBtn" + (playerConfigs[i].colorIndex === j ? " selected" : "");
+      btn.style.background = c.body;
+      btn.disabled = (j === takenByOther);
+      btn.setAttribute("aria-label", c.name);
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        if (btn.disabled) return;
+        playerConfigs[i].colorIndex = j;
+        savePlayerConfigs();
+        renderSwatchesForSlot(0);
+        renderSwatchesForSlot(1);
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
+  function buildPlayerRow(i) {
+    var active = i < ACTIVE_SLOTS;
+    var cfg = playerConfigs[i];
+
+    var row = document.createElement("div");
+    row.className = "playerRow" + (active ? "" : " slotDisabled");
+
+    var num = document.createElement("div");
+    num.className = "slotNum";
+    num.textContent = i + 1;
+    row.appendChild(num);
+
+    var nameInput = document.createElement("input");
+    nameInput.className = "nameInput";
+    nameInput.maxLength = 14;
+    nameInput.value = cfg.name;
+    nameInput.placeholder = "Player " + (i + 1);
+    nameInput.disabled = !active;
+    if (active) {
+      nameInput.addEventListener("input", function () {
+        cfg.name = nameInput.value.slice(0, 14) || ("Player " + (i + 1));
+        savePlayerConfigs();
+      });
+    }
+    row.appendChild(nameInput);
+
+    var swatchWrap = document.createElement("div");
+    swatchWrap.className = "colorSwatches";
+    swatchWrap.id = "swatches" + i;
+    row.appendChild(swatchWrap);
+
+    var modeWrap = document.createElement("div");
+    modeWrap.className = "modeToggle";
+    var humanBtn = document.createElement("button");
+    humanBtn.className = "modeBtn" + (cfg.mode === "human" ? " active" : "");
+    humanBtn.textContent = "Player";
+    humanBtn.disabled = !active;
+    var botBtn = document.createElement("button");
+    botBtn.className = "modeBtn" + (cfg.mode === "bot" ? " active" : "");
+    botBtn.textContent = "Bot";
+    botBtn.disabled = true; // locked for now - no AI opponent yet
+    modeWrap.appendChild(humanBtn);
+    modeWrap.appendChild(botBtn);
+    row.appendChild(modeWrap);
+
+    return row;
+  }
+
+  function renderPlayerRows() {
+    var container = document.getElementById("playerRows");
+    container.innerHTML = "";
+    for (var i = 0; i < PLAYER_SLOTS; i++) container.appendChild(buildPlayerRow(i));
+    for (var j = 0; j < ACTIVE_SLOTS; j++) renderSwatchesForSlot(j);
+  }
+
+  var gameConfig = { players: [] };
+  function applyPlayerConfigToGame() {
+    gameConfig.players = [0, 1].map(function (i) {
+      var cfg = playerConfigs[i];
+      var c = COLOR_PALETTE[cfg.colorIndex];
+      return { name: cfg.name, color: c.body, colorDark: c.dark };
+    });
+  }
+
+  document.getElementById("newGameBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    showScreen("screenPlayers");
+  });
+  document.getElementById("playersNextBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    showScreen("screenRounds");
+  });
+  document.getElementById("roundsBackBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    showScreen("screenPlayers");
+  });
+  document.getElementById("startGameBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    beginMatchFromConfig();
+  });
+
   // ---------- Game state ----------
+  var matchActive = false;
   var players; // array of 2 tank states
   var active = 0;
   var state = "aim"; // aim | flight | resolve | gameover
@@ -375,6 +663,7 @@
 
   function newTank(idx) {
     var startX = idx === 0 ? WORLD_W * 0.32 : WORLD_W * 0.68;
+    var cfg = gameConfig.players[idx];
     return {
       idx: idx,
       x: startX,
@@ -382,8 +671,9 @@
       fuel: FUEL_MAX,
       angle: 55,
       power: 55,
-      color: idx === 0 ? "#d1432c" : "#2f7fd1",
-      colorDark: idx === 0 ? "#8a2a1a" : "#1e578f",
+      name: cfg.name,
+      color: cfg.color,
+      colorDark: cfg.colorDark,
       alive: true
     };
   }
@@ -471,9 +761,11 @@
     e.preventDefault();
     recenterView();
   });
-  document.getElementById("newMatchBtn").addEventListener("pointerdown", function (e) {
+  document.getElementById("backToSetupBtn").addEventListener("pointerdown", function (e) {
     e.preventDefault();
-    startMatch();
+    matchActive = false;
+    document.getElementById("overlay").classList.remove("show");
+    showScreen("screenPlayers");
   });
 
   // ---------- Fullscreen toggle ----------
@@ -593,7 +885,7 @@
       });
       if (burned) {
         p.health = Math.max(0, p.health - TREE_FIRE_DAMAGE);
-        messages.push("Player " + (i + 1) + " took " + TREE_FIRE_DAMAGE + " HP from a burning tree!");
+        messages.push(p.name + " took " + TREE_FIRE_DAMAGE + " HP from a burning tree!");
       }
     }
     if (messages.length) showToast("🔥 " + messages.join(" "));
@@ -614,8 +906,7 @@
     var loser = players.filter(function (p) { return p.health <= 0; })[0];
     if (loser) {
       var winner = players[1 - loser.idx];
-      document.getElementById("winText").textContent =
-        "Player " + (winner.idx + 1) + " Wins!";
+      document.getElementById("winText").textContent = winner.name + " Wins!";
       document.getElementById("overlay").classList.add("show");
       state = "gameover";
       return;
@@ -630,8 +921,7 @@
 
   // ---------- UI text ----------
   function updateTurnUI() {
-    document.getElementById("turnLabel").textContent =
-      "Player " + (active + 1) + "'s Turn";
+    document.getElementById("turnLabel").textContent = players[active].name + "'s Turn";
     document.getElementById("turnLabel").style.color = players[active].color;
   }
   function updateFuelUI() {
@@ -1052,15 +1342,25 @@
     if (lastT === null) lastT = t;
     var dt = Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
-    update(dt);
-    render();
+    if (matchActive) {
+      update(dt);
+      render();
+    }
     requestAnimationFrame(frame);
+  }
+
+  function beginMatchFromConfig() {
+    applyPlayerConfigToGame();
+    showScreen("screenMatch");
+    resizeCanvas();
+    matchActive = true;
+    startMatch();
   }
 
   // ---------- Boot ----------
   function boot() {
-    resizeCanvas();
-    startMatch();
+    renderPlayerRows();
+    showScreen("screenWelcome");
     requestAnimationFrame(frame);
   }
   boot();
