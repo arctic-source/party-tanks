@@ -205,8 +205,9 @@
   var POWER_RATE = 45; // units/sec while held
   var POWER_TO_SPEED = 7.2; // maps power units -> initial bullet speed px/s
   var TANK_HALF_W = 20, TANK_HALF_H = 12;
-  var TREE_HIT_RADIUS = 13; // per unit of tree.scale
-  var TREE_CANOPY_OFFSET = 13; // per unit of tree.scale, above ground
+  var TREE_BASE_HEIGHT = 40; // px at scale 1
+  var TREE_CANOPY_FRAC = 0.52; // fraction of height above ground used as hit-circle center
+  var TREE_RADIUS_FRAC = 0.30; // fraction of height used as hit-circle radius
   var TREE_FIRE_RADIUS = 34;
   var TREE_FIRE_DAMAGE = 25;
   var BURN_TURNS = 3;
@@ -272,7 +273,7 @@
   var bgTrees = []; // decorative distant trees: {rx} in mountain parallax space
 
   function makeTree(x) {
-    return { x: x, state: "alive", burnTurnsLeft: 0, scale: 0.8 + Math.random() * 0.5 };
+    return { x: x, state: "alive", burnTurnsLeft: 0, scale: 0.95 + Math.random() * 0.55 };
   }
 
   function generateTrees(tankXs) {
@@ -284,12 +285,13 @@
       return tankXs.every(function (tx) { return Math.abs(x - tx) > minDist; });
     }
 
-    // Density varies a lot match to match: sometimes almost bare, sometimes busy.
+    // Density varies match to match, but every match gets a solid baseline
+    // of trees - never bare or nearly bare.
     var roll = Math.random();
     var loneCount, clusterCount;
-    if (roll < 0.25) { loneCount = randInt(0, 2); clusterCount = Math.random() < 0.3 ? 1 : 0; }
-    else if (roll < 0.75) { loneCount = randInt(2, 5); clusterCount = randInt(1, 2); }
-    else { loneCount = randInt(4, 7); clusterCount = randInt(2, 3); }
+    if (roll < 0.3) { loneCount = randInt(4, 6); clusterCount = randInt(1, 2); }
+    else if (roll < 0.7) { loneCount = randInt(6, 9); clusterCount = randInt(2, 3); }
+    else { loneCount = randInt(9, 13); clusterCount = randInt(3, 4); }
 
     for (var i = 0; i < loneCount; i++) {
       var x = randRange(playMinX, playMaxX);
@@ -311,8 +313,8 @@
 
   function generateBgTrees() {
     bgTrees = [];
-    var count = randInt(5, 9);
-    for (var i = 0; i < count; i++) bgTrees.push({ rx: Math.random() * 3000 });
+    var count = randInt(6, 11);
+    for (var i = 0; i < count; i++) bgTrees.push({ rx: Math.random() * 3000, scale: 0.8 + Math.random() * 0.6 });
   }
 
   // ---------- Game state ----------
@@ -581,9 +583,10 @@
       for (var ti = 0; ti < trees.length; ti++) {
         var tr = trees[ti];
         if (tr.state !== "alive") continue;
-        var tCanopyY = terrainHeightAt(tr.x) - TREE_CANOPY_OFFSET * tr.scale;
+        var tH = TREE_BASE_HEIGHT * tr.scale;
+        var tCanopyY = terrainHeightAt(tr.x) - tH * TREE_CANOPY_FRAC;
         var tdx = bullet.x - tr.x, tdy = bullet.y - tCanopyY;
-        var tRadius = TREE_HIT_RADIUS * tr.scale;
+        var tRadius = tH * TREE_RADIUS_FRAC;
         if (tdx * tdx + tdy * tdy <= tRadius * tRadius) { hitTree = tr; break; }
       }
 
@@ -642,14 +645,11 @@
     if (withTrees) {
       ctx.save();
       ctx.globalAlpha = alpha + 0.15;
-      ctx.font = "14px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
       for (var i = 0; i < bgTrees.length; i++) {
         var sx = bgTrees[i].rx - parallax;
         if (sx < -20 || sx > VIEW_W + 20) continue;
         var h2 = mountainHeightAt(bgTrees[i].rx + seed, baseY, amp, freq1, freq2);
-        ctx.fillText("🌲", sx, h2 + 2);
+        drawPineTree(sx, h2 + 2, 20 * bgTrees[i].scale, color, color);
       }
       ctx.restore();
     }
@@ -778,30 +778,47 @@
     ctx.restore();
   }
 
+  // A simple stacked-triangle conifer icon (evokes the pine emoji shape
+  // without depending on the platform's emoji font/colors).
+  function drawPineTree(x, groundY, h, foliageColor, trunkColor) {
+    var trunkH = h * 0.16, trunkW = h * 0.13;
+    ctx.fillStyle = trunkColor;
+    ctx.fillRect(x - trunkW / 2, groundY - trunkH, trunkW, trunkH);
+
+    var layers = [
+      { w: h * 0.66, h: h * 0.44, yOff: trunkH * 0.5 },
+      { w: h * 0.52, h: h * 0.40, yOff: trunkH * 0.5 + h * 0.44 * 0.55 },
+      { w: h * 0.37, h: h * 0.36, yOff: trunkH * 0.5 + h * 0.44 * 0.55 + h * 0.40 * 0.55 }
+    ];
+    ctx.fillStyle = foliageColor;
+    layers.forEach(function (l) {
+      var by = groundY - l.yOff;
+      ctx.beginPath();
+      ctx.moveTo(x, by - l.h);
+      ctx.lineTo(x - l.w / 2, by);
+      ctx.lineTo(x + l.w / 2, by);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }
+
   function drawTree(t) {
     var sx = t.x - camX;
     if (sx < -30 || sx > VIEW_W + 30) return;
     var groundY = terrainHeightAt(t.x);
-    var fontSize = 26 * t.scale;
+    var h = TREE_BASE_HEIGHT * t.scale;
 
     ctx.save();
-    ctx.font = fontSize + "px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-
     if (t.state === "burning") {
       ctx.shadowColor = "rgba(255,110,20,0.95)";
       ctx.shadowBlur = 16;
-      ctx.fillText("🌲", sx, groundY + 2);
+      drawPineTree(sx, groundY + 1, h, "#c94a1e", "#5b3a22");
       ctx.shadowBlur = 0;
-      ctx.font = (fontSize * 0.55) + "px sans-serif";
-      ctx.fillText("🔥", sx + fontSize * 0.28, groundY - fontSize * 0.55);
     } else if (t.state === "ash") {
-      ctx.globalAlpha = 0.75;
-      ctx.filter = "grayscale(1) brightness(0.45)";
-      ctx.fillText("🌲", sx, groundY + 2);
+      ctx.globalAlpha = 0.7;
+      drawPineTree(sx, groundY + 1, h, "#4a4a4a", "#3a3a3a");
     } else {
-      ctx.fillText("🌲", sx, groundY + 2);
+      drawPineTree(sx, groundY + 1, h, "#2e7d32", "#5b3a22");
     }
     ctx.restore();
   }
