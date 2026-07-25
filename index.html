@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Party Tanks</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #000; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+    font-family: sans-serif;
+  }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  #bar {
+    flex: 0 0 auto;
+    display: flex; align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: #1b1f27;
+    border-bottom: 2px solid #000;
+    box-sizing: border-box;
+    z-index: 10;
+  }
+  .cluster { display: flex; align-items: center; gap: 4px; }
+  .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .grp-label { font-size: 9px; color: #9aa; letter-spacing: .05em; }
+  .pair { display: flex; gap: 4px; }
+
+  button.ctl {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    border: none; border-radius: 8px;
+    background: #33394a; color: #fff;
+    font-size: 18px; font-weight: bold;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 0 #14161c;
+  }
+  button.ctl:active, button.ctl.held { background: #4c5570; box-shadow: 0 1px 0 #14161c; transform: translateY(1px); }
+  button.ctl:disabled { opacity: .35; }
+
+  #fireBtn {
+    width: 64px; height: 44px; border-radius: 8px;
+    background: #a8321f; font-size: 14px; letter-spacing: .05em;
+  }
+  #fireBtn:active, #fireBtn.held { background: #d1432c; }
+
+  #recenterBtn { width: 44px; height: 44px; font-size: 14px; background: #2a5d4a; }
+  #recenterBtn:active { background: #367a61; }
+
+  #status {
+    flex: 1 1 auto;
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 3px;
+    min-width: 90px;
+    color: #fff; font-size: 12px;
+  }
+  #turnLabel { font-weight: bold; font-size: 13px; }
+  .fuelWrap { width: 100%; height: 7px; background: #10131a; border-radius: 4px; overflow: hidden; }
+  #fuelFill { height: 100%; width: 100%; background: #e0b93a; transition: width .05s linear; }
+
+  #canvasWrap { flex: 1 1 auto; position: relative; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; background: #6f8fae; }
+
+  #overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.72);
+    color: #fff; text-align: center; z-index: 20;
+    flex-direction: column; gap: 16px;
+  }
+  #overlay.show { display: flex; }
+  #overlay h1 { margin: 0; font-size: 28px; }
+  #overlay button {
+    font-size: 18px; padding: 12px 28px; border-radius: 10px;
+    border: none; background: #2a5d4a; color: #fff; font-weight: bold;
+  }
+
+  #rotateMsg {
+    position: absolute; inset: 0; z-index: 30;
+    background: #10131a; color: #fff;
+    display: none;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 24px; box-sizing: border-box;
+    font-size: 18px;
+  }
+  @media (orientation: portrait) {
+    #rotateMsg { display: flex; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bar">
+    <div class="cluster">
+      <div class="grp">
+        <div class="grp-label">MOVE</div>
+        <div class="pair">
+          <button class="ctl" id="btnLeft" aria-label="Move left">&#9664;</button>
+          <button class="ctl" id="btnRight" aria-label="Move right">&#9654;</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="status">
+      <div id="turnLabel">Player 1's Turn</div>
+      <div class="fuelWrap"><div id="fuelFill"></div></div>
+    </div>
+
+    <div class="cluster">
+      <div class="grp">
+        <div class="grp-label">ANGLE</div>
+        <div class="pair">
+          <button class="ctl" id="btnAngleDown">&#9660;</button>
+          <button class="ctl" id="btnAngleUp">&#9650;</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="grp-label">POWER</div>
+        <div class="pair">
+          <button class="ctl" id="btnPowerDown">&minus;</button>
+          <button class="ctl" id="btnPowerUp">&plus;</button>
+        </div>
+      </div>
+      <button class="ctl" id="recenterBtn" aria-label="Recenter camera">&#8982;</button>
+      <button class="ctl" id="fireBtn" aria-label="Fire">FIRE</button>
+    </div>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="c"></canvas>
+    <div id="overlay">
+      <h1 id="winText">Player 1 Wins!</h1>
+      <button id="newMatchBtn">New Match</button>
+    </div>
+  </div>
+</div>
+<div id="rotateMsg">Rotate your phone to landscape to play&hellip;</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Canvas setup ----------
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var canvasWrap = document.getElementById("canvasWrap");
+
+  function resizeCanvas() {
+    var rect = canvasWrap.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    VIEW_W = rect.width;
+    VIEW_H = rect.height;
+  }
+  var VIEW_W = 0, VIEW_H = 0;
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("orientationchange", resizeCanvas);
+
+  // ---------- Constants ----------
+  var WORLD_W = 3400;
+  var GRAVITY = 260; // px/s^2
+  var MOVE_SPEED = 130; // px/s
+  var FUEL_MAX = 100;
+  var FUEL_PER_SEC = 22;
+  var HEALTH_MAX = 100;
+  var HIT_RADIUS = 26;
+  var DAMAGE = 25;
+  var ANGLE_MIN = 5, ANGLE_MAX = 175;
+  var ANGLE_RATE = 55; // deg/sec while held
+  var POWER_MIN = 15, POWER_MAX = 100;
+  var POWER_RATE = 45; // units/sec while held
+  var POWER_TO_SPEED = 7.2; // maps power units -> initial bullet speed px/s
+  var TANK_HALF_W = 20, TANK_HALF_H = 12;
+
+  // ---------- Terrain ----------
+  var terrain = []; // heights sampled per integer x pixel, length WORLD_W+1
+
+  function generateTerrain() {
+    var segments = 9; // midpoint displacement depth -> 2^9 = 512 points
+    var n = Math.pow(2, segments);
+    var pts = new Array(n + 1);
+    var baseline = VIEW_H * 0.58;
+    var roughness = VIEW_H * 0.30;
+    pts[0] = baseline + (Math.random() - 0.5) * roughness * 0.6;
+    pts[n] = baseline + (Math.random() - 0.5) * roughness * 0.6;
+    displace(pts, 0, n, roughness);
+
+    // Resample to WORLD_W+1 integer columns.
+    terrain = new Array(WORLD_W + 1);
+    for (var x = 0; x <= WORLD_W; x++) {
+      var t = (x / WORLD_W) * n;
+      var i0 = Math.floor(t);
+      var i1 = Math.min(n, i0 + 1);
+      var f = t - i0;
+      var h = pts[i0] * (1 - f) + pts[i1] * f;
+      var minH = VIEW_H * 0.30, maxH = VIEW_H * 0.85;
+      if (h < minH) h = minH;
+      if (h > maxH) h = maxH;
+      terrain[x] = h;
+    }
+  }
+
+  function displace(pts, i0, i1, amp) {
+    if (i1 - i0 < 2) return;
+    var mid = (i0 + i1) >> 1;
+    pts[mid] = (pts[i0] + pts[i1]) / 2 + (Math.random() - 0.5) * amp;
+    displace(pts, i0, mid, amp * 0.55);
+    displace(pts, mid, i1, amp * 0.55);
+  }
+
+  function terrainHeightAt(x) {
+    x = Math.max(0, Math.min(WORLD_W, x));
+    var xi = Math.floor(x);
+    var xi1 = Math.min(WORLD_W, xi + 1);
+    var f = x - xi;
+    return terrain[xi] * (1 - f) + terrain[xi1] * f;
+  }
+
+  // ---------- Game state ----------
+  var players; // array of 2 tank states
+  var active = 0;
+  var state = "aim"; // aim | flight | resolve | gameover
+  var bullet = null;
+  var impactFlash = null; // {x, y, t}
+  var camX = 0;
+  var dragging = false, dragStartX = 0, dragStartCamX = 0, dragMoved = false;
+
+  function newTank(idx) {
+    var startX = idx === 0 ? WORLD_W * 0.08 : WORLD_W * 0.92;
+    return {
+      idx: idx,
+      x: startX,
+      health: HEALTH_MAX,
+      fuel: FUEL_MAX,
+      angle: 55,
+      power: 55,
+      color: idx === 0 ? "#d1432c" : "#2f7fd1",
+      colorDark: idx === 0 ? "#8a2a1a" : "#1e578f",
+      alive: true
+    };
+  }
+
+  function startMatch() {
+    generateTerrain();
+    players = [newTank(0), newTank(1)];
+    active = 0;
+    state = "aim";
+    bullet = null;
+    impactFlash = null;
+    centerCameraOnActive();
+    updateTurnUI();
+    document.getElementById("overlay").classList.remove("show");
+  }
+
+  function centerCameraOnActive() {
+    camX = players[active].x - VIEW_W / 2;
+    clampCam();
+  }
+
+  function clampCam() {
+    camX = Math.max(0, Math.min(WORLD_W - VIEW_W, camX));
+    if (WORLD_W < VIEW_W) camX = -(VIEW_W - WORLD_W) / 2;
+  }
+
+  // ---------- Input: buttons (press-and-hold) ----------
+  var held = {}; // key -> true while pressed
+
+  function bindHold(id, key) {
+    var el = document.getElementById(id);
+    function down(e) { e.preventDefault(); held[key] = true; el.classList.add("held"); }
+    function up(e) { if (e) e.preventDefault(); held[key] = false; el.classList.remove("held"); }
+    el.addEventListener("pointerdown", down);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    el.addEventListener("pointerleave", up);
+  }
+  bindHold("btnLeft", "left");
+  bindHold("btnRight", "right");
+  bindHold("btnAngleUp", "angleUp");
+  bindHold("btnAngleDown", "angleDown");
+  bindHold("btnPowerUp", "powerUp");
+  bindHold("btnPowerDown", "powerDown");
+
+  document.getElementById("fireBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    fire();
+  });
+  document.getElementById("recenterBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    centerCameraOnActive();
+  });
+  document.getElementById("newMatchBtn").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    startMatch();
+  });
+
+  // ---------- Input: drag to pan map ----------
+  canvasWrap.addEventListener("pointerdown", function (e) {
+    if (state === "gameover") return;
+    dragging = true; dragMoved = false;
+    dragStartX = e.clientX;
+    dragStartCamX = camX;
+  });
+  canvasWrap.addEventListener("pointermove", function (e) {
+    if (!dragging) return;
+    var dx = e.clientX - dragStartX;
+    if (Math.abs(dx) > 3) dragMoved = true;
+    camX = dragStartCamX - dx;
+    clampCam();
+  });
+  function endDrag() { dragging = false; }
+  canvasWrap.addEventListener("pointerup", endDrag);
+  canvasWrap.addEventListener("pointercancel", endDrag);
+
+  // ---------- Firing ----------
+  function fire() {
+    if (state !== "aim") return;
+    var p = players[active];
+    var rad = p.angle * Math.PI / 180;
+    var dir = p.idx === 0 ? 1 : -1;
+    var speed = p.power * POWER_TO_SPEED;
+    bullet = {
+      x: p.x + dir * (TANK_HALF_W + 6),
+      y: terrainHeightAt(p.x) - TANK_HALF_H - 10,
+      vx: Math.cos(rad) * speed * dir,
+      vy: -Math.sin(rad) * speed
+    };
+    state = "flight";
+  }
+
+  function resolveImpact(x, y, hitTank) {
+    impactFlash = { x: x, y: y, t: 0.5 };
+    bullet = null;
+    if (hitTank) {
+      hitTank.health -= DAMAGE;
+      if (hitTank.health < 0) hitTank.health = 0;
+    }
+    state = "resolve";
+  }
+
+  function afterResolve() {
+    var loser = players.filter(function (p) { return p.health <= 0; })[0];
+    if (loser) {
+      var winner = players[1 - loser.idx];
+      document.getElementById("winText").textContent =
+        "Player " + (winner.idx + 1) + " Wins!";
+      document.getElementById("overlay").classList.add("show");
+      state = "gameover";
+      return;
+    }
+    active = 1 - active;
+    players[active].fuel = FUEL_MAX;
+    state = "aim";
+    centerCameraOnActive();
+    updateTurnUI();
+  }
+
+  // ---------- UI text ----------
+  function updateTurnUI() {
+    document.getElementById("turnLabel").textContent =
+      "Player " + (active + 1) + "'s Turn";
+    document.getElementById("turnLabel").style.color = players[active].color;
+  }
+  function updateFuelUI() {
+    var pct = Math.max(0, players[active].fuel) / FUEL_MAX * 100;
+    document.getElementById("fuelFill").style.width = pct + "%";
+  }
+
+  // ---------- Update loop ----------
+  var lastT = null;
+  function update(dt) {
+    if (state === "aim") {
+      var p = players[active];
+      if (held.angleUp) p.angle = Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt);
+      if (held.angleDown) p.angle = Math.max(ANGLE_MIN, p.angle - ANGLE_RATE * dt);
+      if (held.powerUp) p.power = Math.min(POWER_MAX, p.power + POWER_RATE * dt);
+      if (held.powerDown) p.power = Math.max(POWER_MIN, p.power - POWER_RATE * dt);
+
+      if (p.fuel > 0) {
+        var mv = 0;
+        if (held.left) mv -= 1;
+        if (held.right) mv += 1;
+        if (mv !== 0) {
+          var dist = MOVE_SPEED * dt;
+          p.x += mv * dist;
+          p.x = Math.max(10, Math.min(WORLD_W - 10, p.x));
+          p.fuel = Math.max(0, p.fuel - FUEL_PER_SEC * dt);
+        }
+      }
+      updateFuelUI();
+    } else if (state === "flight") {
+      bullet.vy += GRAVITY * dt;
+      bullet.x += bullet.vx * dt;
+      bullet.y += bullet.vy * dt;
+
+      // camera follows bullet
+      camX = bullet.x - VIEW_W / 2;
+      clampCam();
+
+      var defender = players[1 - active];
+      var dx = bullet.x - defender.x;
+      var dy = bullet.y - (terrainHeightAt(defender.x) - TANK_HALF_H);
+      var dist2 = dx * dx + dy * dy;
+
+      if (bullet.x < 0 || bullet.x > WORLD_W) {
+        resolveImpact(bullet.x, bullet.y, null);
+      } else if (dist2 <= HIT_RADIUS * HIT_RADIUS) {
+        resolveImpact(bullet.x, bullet.y, defender);
+      } else if (bullet.y >= terrainHeightAt(bullet.x)) {
+        resolveImpact(bullet.x, terrainHeightAt(bullet.x), null);
+      }
+    } else if (state === "resolve") {
+      impactFlash.t -= dt;
+      if (impactFlash.t <= 0) {
+        impactFlash = null;
+        afterResolve();
+      }
+    }
+  }
+
+  // ---------- Render ----------
+  function drawBackground() {
+    var g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+    g.addColorStop(0, "#7fa8cf");
+    g.addColorStop(1, "#c9dced");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    // faint distant hills, parallax at 0.3x camera speed, semi-transparent
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#5c7a99";
+    var parallax = camX * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, VIEW_H * 0.75);
+    for (var x = 0; x <= VIEW_W; x += 40) {
+      var wx = x + parallax;
+      var h = VIEW_H * 0.75 - 26 * Math.sin(wx * 0.004) - 14 * Math.sin(wx * 0.011 + 1.5);
+      ctx.lineTo(x, h);
+    }
+    ctx.lineTo(VIEW_W, VIEW_H);
+    ctx.lineTo(0, VIEW_H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawTerrain() {
+    var x0 = Math.max(0, Math.floor(camX));
+    var x1 = Math.min(WORLD_W, Math.ceil(camX + VIEW_W));
+
+    ctx.beginPath();
+    ctx.moveTo(x0 - camX, VIEW_H);
+    for (var x = x0; x <= x1; x += 2) {
+      ctx.lineTo(x - camX, terrainHeightAt(x));
+    }
+    ctx.lineTo(x1 - camX, VIEW_H);
+    ctx.closePath();
+    ctx.fillStyle = "#6b4a2f"; // brown body
+    ctx.fill();
+
+    // green cap
+    ctx.beginPath();
+    var first = true;
+    for (var xg = x0; xg <= x1; xg += 2) {
+      var hy = terrainHeightAt(xg);
+      if (first) { ctx.moveTo(xg - camX, hy); first = false; }
+      else ctx.lineTo(xg - camX, hy);
+    }
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#3f8f3f";
+    ctx.stroke();
+  }
+
+  function drawTank(p) {
+    var sx = p.x - camX;
+    if (sx < -40 || sx > VIEW_W + 40) return;
+    var groundY = terrainHeightAt(p.x);
+    var cy = groundY - TANK_HALF_H;
+
+    ctx.save();
+    ctx.translate(sx, cy);
+
+    // body
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = p.colorDark;
+    ctx.lineWidth = 2;
+    roundRect(-TANK_HALF_W, -TANK_HALF_H, TANK_HALF_W * 2, TANK_HALF_H * 2, 5);
+    ctx.fill(); ctx.stroke();
+
+    // wheels
+    ctx.fillStyle = "#22262f";
+    ctx.beginPath(); ctx.arc(-TANK_HALF_W + 6, TANK_HALF_H, 6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(TANK_HALF_W - 6, TANK_HALF_H, 6, 0, 7); ctx.fill();
+
+    // barrel
+    var dir = p.idx === 0 ? 1 : -1;
+    var rad = p.angle * Math.PI / 180;
+    var bx = Math.cos(rad) * dir;
+    var by = -Math.sin(rad);
+    ctx.strokeStyle = p.colorDark;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0, -4);
+    ctx.lineTo(bx * 26, -4 + by * 26);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // aim arrow (active tank only, during aim)
+    if (state === "aim" && p.idx === active) {
+      var len = 20 + (p.power / POWER_MAX) * 55;
+      ctx.strokeStyle = "rgba(255,255,60,0.9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx, cy - 4);
+      ctx.lineTo(sx + bx * len, cy - 4 + by * len);
+      ctx.stroke();
+      // arrow head
+      ctx.beginPath();
+      var hx = sx + bx * len, hy = cy - 4 + by * len;
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx - bx * 8 - by * 5, hy - by * 8 + bx * 5);
+      ctx.lineTo(hx - bx * 8 + by * 5, hy - by * 8 - bx * 5);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(255,255,60,0.9)";
+      ctx.fill();
+    }
+
+    // health bar BELOW tank
+    var barW = 40, barH = 5;
+    var bx0 = sx - barW / 2, by0 = groundY + 10;
+    ctx.fillStyle = "#20242c";
+    ctx.fillRect(bx0, by0, barW, barH);
+    var pct = Math.max(0, p.health) / HEALTH_MAX;
+    ctx.fillStyle = pct > 0.4 ? "#4caf50" : (pct > 0.15 ? "#e0b93a" : "#d1432c");
+    ctx.fillRect(bx0, by0, barW * pct, barH);
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBullet() {
+    if (!bullet) return;
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath();
+    ctx.arc(bullet.x - camX, bullet.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawFlash() {
+    if (!impactFlash) return;
+    var r = 18 * (1 - impactFlash.t / 0.5) + 6;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, impactFlash.t / 0.5);
+    ctx.fillStyle = "#ffdd55";
+    ctx.beginPath();
+    ctx.arc(impactFlash.x - camX, impactFlash.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function render() {
+    drawBackground();
+    drawTerrain();
+    players.forEach(drawTank);
+    drawBullet();
+    drawFlash();
+  }
+
+  // ---------- Main loop ----------
+  function frame(t) {
+    if (lastT === null) lastT = t;
+    var dt = Math.min(0.05, (t - lastT) / 1000);
+    lastT = t;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Boot ----------
+  function boot() {
+    resizeCanvas();
+    startMatch();
+    requestAnimationFrame(frame);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
