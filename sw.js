@@ -1,4 +1,4 @@
-var CACHE_NAME = "party-tanks-v1";
+var CACHE_NAME = "party-tanks-v2";
 var ASSETS = [
   "./",
   "./index.html",
@@ -27,10 +27,16 @@ self.addEventListener("activate", function (event) {
   self.clients.claim();
 });
 
+// Network-first: while we're actively iterating, a refresh should always
+// pick up the latest deploy. Cache is only a fallback for offline play.
 self.addEventListener("fetch", function (event) {
   event.respondWith(
-    caches.match(event.request).then(function (cached) {
-      return cached || fetch(event.request);
+    fetch(event.request).then(function (resp) {
+      var copy = resp.clone();
+      caches.open(CACHE_NAME).then(function (cache) { cache.put(event.request, copy); });
+      return resp;
+    }).catch(function () {
+      return caches.match(event.request);
     })
   );
 });
