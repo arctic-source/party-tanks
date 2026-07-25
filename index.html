@@ -31,11 +31,11 @@
     box-sizing: border-box;
     z-index: 10;
   }
-  .cluster { display: flex; align-items: center; gap: 4px; }
-  .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .cluster { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+  .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; }
   .grp-label { font-size: 10px; color: #9aa; letter-spacing: .03em; white-space: nowrap; }
   .grp-label b { color: #fff; font-weight: bold; }
-  .pair { display: flex; gap: 4px; }
+  .pair { display: flex; gap: 4px; flex: 0 0 auto; }
 
   button.ctl {
     -webkit-tap-highlight-color: transparent;
@@ -44,6 +44,7 @@
     background: #33394a; color: #fff;
     font-size: 18px; font-weight: bold;
     width: 44px; height: 44px;
+    flex: 0 0 auto;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 0 #14161c;
   }
@@ -56,20 +57,28 @@
   }
   #fireBtn:active, #fireBtn.held { background: #d1432c; }
 
-  #recenterBtn { width: 44px; height: 44px; font-size: 14px; background: #2a5d4a; }
+  button.ctl.wideCtl {
+    width: auto; flex-direction: row; gap: 4px;
+    padding: 0 8px; font-size: 10px; letter-spacing: .01em;
+    white-space: nowrap;
+  }
+  .wideCtl svg { flex: 0 0 auto; display: block; width: 14px; height: 14px; }
+
+  #recenterBtn { height: 44px; background: #2a5d4a; }
   #recenterBtn:active { background: #367a61; }
 
-  #fsBtn { width: 44px; height: 44px; font-size: 14px; background: #3a3a3a; }
+  #fsBtn { height: 44px; background: #3a3a3a; }
   #fsBtn:active { background: #555; }
 
   #status {
     flex: 1 1 auto;
     display: flex; flex-direction: column; justify-content: center;
     gap: 3px;
-    min-width: 90px;
+    min-width: 0;
+    overflow: hidden;
     color: #fff; font-size: 12px;
   }
-  #turnLabel { font-weight: bold; font-size: 13px; }
+  #turnLabel { font-weight: bold; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fuelWrap { width: 100%; height: 7px; background: #10131a; border-radius: 4px; overflow: hidden; }
   #fuelFill { height: 100%; width: 100%; background: #e0b93a; transition: width .05s linear; }
 
@@ -244,7 +253,12 @@
 
   <div id="screenMatch" class="screen">
     <div id="bar">
-      <button class="ctl" id="fsBtn" aria-label="Toggle fullscreen">&#10021;</button>
+      <button class="ctl wideCtl" id="fsBtn" aria-label="Toggle fullscreen">
+        <svg id="fsIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path>
+        </svg>
+        <span id="fsLabel">Fullscreen</span>
+      </button>
       <div class="cluster">
         <div class="grp">
           <div class="grp-label">MOVE</div>
@@ -275,7 +289,17 @@
             <button class="ctl" id="btnPowerUp">&plus;</button>
           </div>
         </div>
-        <button class="ctl" id="recenterBtn" aria-label="Recenter camera">&#8982;</button>
+        <button class="ctl wideCtl" id="recenterBtn" aria-label="Recenter camera on your tank">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle>
+            <circle cx="12" cy="12" r="7"></circle>
+            <line x1="12" y1="1" x2="12" y2="4"></line>
+            <line x1="12" y1="20" x2="12" y2="23"></line>
+            <line x1="1" y1="12" x2="4" y2="12"></line>
+            <line x1="20" y1="12" x2="23" y2="12"></line>
+          </svg>
+          <span>Recenter</span>
+        </button>
         <button class="ctl" id="fireBtn" aria-label="Fire">FIRE</button>
       </div>
     </div>
@@ -769,6 +793,17 @@
   });
 
   // ---------- Fullscreen toggle ----------
+  var FS_ICON_EXPAND = '<path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path>';
+  var FS_ICON_COMPRESS = '<path d="M9 4v5H4"></path><path d="M15 4v5h5"></path><path d="M9 20v-5H4"></path><path d="M15 20v-5h5"></path>';
+
+  function updateFsButton() {
+    var isFs = !!document.fullscreenElement;
+    document.getElementById("fsIcon").innerHTML = isFs ? FS_ICON_COMPRESS : FS_ICON_EXPAND;
+    document.getElementById("fsLabel").textContent = isFs ? "Exit" : "Fullscreen";
+  }
+  document.addEventListener("fullscreenchange", updateFsButton);
+  updateFsButton();
+
   document.getElementById("fsBtn").addEventListener("pointerdown", function (e) {
     e.preventDefault();
     if (!document.fullscreenElement) {
