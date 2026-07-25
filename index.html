@@ -198,7 +198,10 @@
   var FUEL_PER_SEC = 22;
   var HEALTH_MAX = 100;
   var HIT_RADIUS = 26;
-  var DAMAGE = 50;
+  var MIN_DAMAGE = 30; // grazing hit near the edge of HIT_RADIUS
+  var MAX_DAMAGE = 70; // dead-center hit
+  var CRATER_RADIUS = 18; // world px
+  var CRATER_DEPTH = 0.05; // fraction of VIEW_H
   var ANGLE_MIN = 5, ANGLE_MAX = 175;
   var ANGLE_RATE = 55; // deg/sec while held
   var POWER_MIN = 15, POWER_MAX = 100;
@@ -267,6 +270,20 @@
     var xi1 = Math.min(WORLD_W, xi + 1);
     var f = x - xi;
     return terrain[xi] * (1 - f) + terrain[xi1] * f;
+  }
+
+  // Digs a small crater into the terrain around cx, deepest at the center
+  // and tapering smoothly to nothing at the edge of the radius. Craters
+  // stack, so repeated hits in the same spot dig progressively deeper.
+  function deformTerrain(cx, radius, depth) {
+    var xi0 = Math.max(0, Math.floor(cx - radius));
+    var xi1 = Math.min(WORLD_W, Math.ceil(cx + radius));
+    for (var xi = xi0; xi <= xi1; xi++) {
+      var d = Math.abs(xi - cx) / radius;
+      if (d > 1) continue;
+      var falloff = Math.cos(d * Math.PI / 2);
+      terrain[xi] = Math.min(0.97, terrain[xi] + depth * falloff);
+    }
   }
 
   // ---------- Trees ----------
@@ -553,14 +570,17 @@
     state = "flight";
   }
 
-  function resolveImpact(x, y, hitTank) {
-    impactFlash = { x: x, y: y, t: 0.5 };
+  function resolveImpact(x, y, hitTank, hitDist) {
+    var dmg = null;
+    if (hitTank) {
+      var t = Math.max(0, Math.min(1, (hitDist || 0) / HIT_RADIUS));
+      dmg = Math.round(MAX_DAMAGE - (MAX_DAMAGE - MIN_DAMAGE) * t);
+      hitTank.health = Math.max(0, hitTank.health - dmg);
+    }
+    impactFlash = { x: x, y: y, t: 0.5, damageText: dmg };
     lastImpact[active] = { x: x, y: y, hitTank: !!hitTank };
     bullet = null;
-    if (hitTank) {
-      hitTank.health -= DAMAGE;
-      if (hitTank.health < 0) hitTank.health = 0;
-    }
+    if (x >= 0 && x <= WORLD_W) deformTerrain(x, CRATER_RADIUS, CRATER_DEPTH);
     state = "resolve";
   }
 
@@ -693,7 +713,7 @@
       } else if (bullet.x < 0 || bullet.x > WORLD_W) {
         resolveImpact(bullet.x, bullet.y, null);
       } else if (dist2 <= HIT_RADIUS * HIT_RADIUS) {
-        resolveImpact(bullet.x, bullet.y, defender);
+        resolveImpact(bullet.x, bullet.y, defender, Math.sqrt(dist2));
       } else if (bullet.y >= terrainHeightAt(bullet.x)) {
         resolveImpact(bullet.x, terrainHeightAt(bullet.x), null);
       }
@@ -896,14 +916,30 @@
 
   function drawFlash() {
     if (!impactFlash) return;
-    var r = 18 * (1 - impactFlash.t / 0.5) + 6;
+    var progress = 1 - impactFlash.t / 0.5;
+    var r = 18 * (1 - progress) + 6;
     ctx.save();
-    ctx.globalAlpha = Math.max(0, impactFlash.t / 0.5);
+    ctx.globalAlpha = Math.max(0, 1 - progress);
     ctx.fillStyle = "#ffdd55";
     ctx.beginPath();
     ctx.arc(impactFlash.x, impactFlash.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+
+    if (impactFlash.damageText != null) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - progress);
+      ctx.fillStyle = "#fff59d";
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.lineWidth = 3 / camZoom;
+      ctx.font = "bold " + Math.round(16 / camZoom) + "px sans-serif";
+      ctx.textAlign = "center";
+      var ty = impactFlash.y - (14 + progress * 22) / camZoom;
+      var label = "-" + impactFlash.damageText;
+      ctx.strokeText(label, impactFlash.x, ty);
+      ctx.fillText(label, impactFlash.x, ty);
+      ctx.restore();
+    }
   }
 
   // A simple stacked-triangle conifer icon (evokes the pine emoji shape
