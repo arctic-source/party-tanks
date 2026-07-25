@@ -240,8 +240,10 @@
   var state = "aim"; // aim | flight | resolve | gameover
   var bullet = null;
   var impactFlash = null; // {x, y, t}
+  var lastImpact = [null, null]; // per-player last shot landing spot {x, y, hitTank}
   var camX = 0;
   var dragging = false, dragStartX = 0, dragStartCamX = 0, dragMoved = false;
+  var mountainSeed1 = 0, mountainSeed2 = 0;
 
   function newTank(idx) {
     var startX = idx === 0 ? WORLD_W * 0.08 : WORLD_W * 0.92;
@@ -265,6 +267,9 @@
     state = "aim";
     bullet = null;
     impactFlash = null;
+    lastImpact = [null, null];
+    mountainSeed1 = Math.random() * 1000;
+    mountainSeed2 = Math.random() * 1000;
     centerCameraOnActive();
     updateTurnUI();
     document.getElementById("overlay").classList.remove("show");
@@ -361,6 +366,7 @@
 
   function resolveImpact(x, y, hitTank) {
     impactFlash = { x: x, y: y, t: 0.5 };
+    lastImpact[active] = { x: x, y: y, hitTank: !!hitTank };
     bullet = null;
     if (hitTank) {
       hitTank.health -= DAMAGE;
@@ -457,20 +463,23 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    // faint distant hills, parallax at 0.3x camera speed, semi-transparent
+    drawMountainLayer(mountainSeed1, 0.12, 0.22, "#7793ab", VIEW_H * 0.62, VIEW_H * 0.20, 0.0021, 0.006);
+    drawMountainLayer(mountainSeed2, 0.28, 0.32, "#5c7a99", VIEW_H * 0.72, VIEW_H * 0.15, 0.004, 0.011);
+  }
+
+  function drawMountainLayer(seed, parallaxFactor, alpha, color, baseY, amp, freq1, freq2) {
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#5c7a99";
-    var parallax = camX * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    var parallax = camX * parallaxFactor;
     ctx.beginPath();
-    ctx.moveTo(0, VIEW_H * 0.75);
-    for (var x = 0; x <= VIEW_W; x += 40) {
-      var wx = x + parallax;
-      var h = VIEW_H * 0.75 - 26 * Math.sin(wx * 0.004) - 14 * Math.sin(wx * 0.011 + 1.5);
+    ctx.moveTo(0, VIEW_H);
+    for (var x = 0; x <= VIEW_W; x += 30) {
+      var wx = x + parallax + seed;
+      var h = baseY - amp * Math.sin(wx * freq1) - amp * 0.5 * Math.sin(wx * freq2 + 1.5);
       ctx.lineTo(x, h);
     }
     ctx.lineTo(VIEW_W, VIEW_H);
-    ctx.lineTo(0, VIEW_H);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -598,9 +607,29 @@
     ctx.restore();
   }
 
+  function drawImpactMarks() {
+    for (var i = 0; i < lastImpact.length; i++) {
+      var mark = lastImpact[i];
+      if (!mark || mark.hitTank) continue;
+      var mx = mark.x - camX;
+      if (mx < -12 || mx > VIEW_W + 12) continue;
+      ctx.save();
+      ctx.strokeStyle = players[i].color;
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 3;
+      var r = 7;
+      ctx.beginPath();
+      ctx.moveTo(mx - r, mark.y - r); ctx.lineTo(mx + r, mark.y + r);
+      ctx.moveTo(mx + r, mark.y - r); ctx.lineTo(mx - r, mark.y + r);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function render() {
     drawBackground();
     drawTerrain();
+    drawImpactMarks();
     players.forEach(drawTank);
     drawBullet();
     drawFlash();
