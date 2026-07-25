@@ -26,10 +26,12 @@
     display: flex; align-items: center;
     gap: 6px;
     padding: 6px 8px;
-    background: #1b1f27;
-    border-bottom: 2px solid #000;
+    background: linear-gradient(180deg, var(--accent-bg, #1b1f27) 0%, #14161d 100%);
+    border-bottom: 3px solid var(--accent, #000);
+    box-shadow: 0 2px 12px var(--accent-glow, rgba(0,0,0,.4));
     box-sizing: border-box;
     z-index: 10;
+    transition: background .3s ease, border-color .3s ease, box-shadow .3s ease;
   }
   .cluster { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
   .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 0 0 auto; }
@@ -380,7 +382,7 @@
     var n = Math.pow(2, segments);
     var pts = new Array(n + 1);
     var baseline = 0.58;
-    var roughness = 0.30;
+    var roughness = 0.46;
     pts[0] = baseline + (Math.random() - 0.5) * roughness * 0.6;
     pts[n] = baseline + (Math.random() - 0.5) * roughness * 0.6;
     displace(pts, 0, n, roughness);
@@ -393,7 +395,7 @@
       var i1 = Math.min(n, i0 + 1);
       var f = t - i0;
       var h = pts[i0] * (1 - f) + pts[i1] * f;
-      var minH = 0.30, maxH = 0.85;
+      var minH = 0.20, maxH = 0.92;
       if (h < minH) h = minH;
       if (h > maxH) h = maxH;
       terrain[x] = h;
@@ -404,8 +406,8 @@
     if (i1 - i0 < 2) return;
     var mid = (i0 + i1) >> 1;
     pts[mid] = (pts[i0] + pts[i1]) / 2 + (Math.random() - 0.5) * amp;
-    displace(pts, i0, mid, amp * 0.55);
-    displace(pts, mid, i1, amp * 0.55);
+    displace(pts, i0, mid, amp * 0.62);
+    displace(pts, mid, i1, amp * 0.62);
   }
 
   // Returns the terrain height in current screen pixels (fraction * VIEW_H).
@@ -456,9 +458,9 @@
     // of trees - never bare or nearly bare.
     var roll = Math.random();
     var loneCount, clusterCount;
-    if (roll < 0.3) { loneCount = randInt(4, 6); clusterCount = randInt(1, 2); }
-    else if (roll < 0.7) { loneCount = randInt(6, 9); clusterCount = randInt(2, 3); }
-    else { loneCount = randInt(9, 13); clusterCount = randInt(3, 4); }
+    if (roll < 0.3) { loneCount = randInt(6, 9); clusterCount = randInt(2, 3); }
+    else if (roll < 0.7) { loneCount = randInt(9, 13); clusterCount = randInt(3, 4); }
+    else { loneCount = randInt(13, 18); clusterCount = randInt(4, 6); }
 
     for (var i = 0; i < loneCount; i++) {
       var x = randRange(playMinX, playMaxX);
@@ -469,7 +471,7 @@
 
     for (var c = 0; c < clusterCount; c++) {
       var cx = randRange(playMinX, playMaxX);
-      var n = randInt(3, 6);
+      var n = randInt(4, 7);
       for (var j = 0; j < n; j++) {
         var tx = cx + (Math.random() - 0.5) * 130;
         tx = Math.max(playMinX, Math.min(playMaxX, tx));
@@ -955,9 +957,28 @@
   }
 
   // ---------- UI text ----------
+  function hexToRgb(hex) {
+    var v = parseInt(hex.slice(1), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+  function mixHex(hexA, hexB, t) {
+    var a = hexToRgb(hexA), b = hexToRgb(hexB);
+    var r = Math.round(a[0] + (b[0] - a[0]) * t);
+    var g = Math.round(a[1] + (b[1] - a[1]) * t);
+    var bl = Math.round(a[2] + (b[2] - a[2]) * t);
+    return "rgb(" + r + "," + g + "," + bl + ")";
+  }
+
   function updateTurnUI() {
-    document.getElementById("turnLabel").textContent = players[active].name + "'s Turn";
-    document.getElementById("turnLabel").style.color = players[active].color;
+    var p = players[active];
+    document.getElementById("turnLabel").textContent = p.name + "'s Turn";
+    document.getElementById("turnLabel").style.color = p.color;
+
+    var bar = document.getElementById("bar");
+    var rgb = hexToRgb(p.color);
+    bar.style.setProperty("--accent", p.color);
+    bar.style.setProperty("--accent-bg", mixHex(p.color, "#1b1f27", 0.72));
+    bar.style.setProperty("--accent-glow", "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",.45)");
   }
   function updateFuelUI() {
     var pct = Math.max(0, players[active].fuel) / FUEL_MAX * 100;
@@ -1001,6 +1022,10 @@
           p.x += mv * dist;
           p.x = Math.max(10, Math.min(WORLD_W - 10, p.x));
           p.fuel = Math.max(0, p.fuel - FUEL_PER_SEC * dt);
+          // Auto-follow horizontally while driving so the tank never drifts
+          // out of view; vertical framing/zoom stay untouched.
+          camCenterX = p.x;
+          clampCam();
         }
       }
       updateFuelUI();
