@@ -378,40 +378,65 @@
   var terrain = []; // fraction per integer x pixel, length WORLD_W+1
 
   // Big terrain mountains: a few large, smooth "bumps" layered on top of
-  // the fine rolling-hill noise. Kept separate from the noise so they read
-  // as dominant shapes instead of just more wrinkles, and biased to
-  // sometimes sit between the two tanks so shots have to arc over them.
+  // the fine rolling-hill noise, so they read as dominant shapes instead of
+  // just more wrinkles. Rather than one placement rule producing endless
+  // small variations on the same shape, each match rolls one of several
+  // distinct layout archetypes so sessions feel qualitatively different,
+  // not just randomized in size/count.
   var terrainMountains = [];
+  var currentLayoutName = "";
+
+  function pickMountainLayout() {
+    var roll = Math.random();
+    if (roll < 0.15) return "Open Plains";
+    if (roll < 0.40) return "The Ridge";
+    if (roll < 0.60) return "Twin Peaks";
+    if (roll < 0.80) return "Mountain Range";
+    return "Off to the Side";
+  }
 
   function generateTerrainMountains() {
     terrainMountains = [];
     var tank0X = WORLD_W * 0.32, tank1X = WORLD_W * 0.68;
-    var roll = Math.random();
-    var count;
-    if (roll < 0.12) count = 0;
-    else if (roll < 0.62) count = 1;
-    else if (roll < 0.90) count = 2;
-    else count = 3;
+    var loX = Math.min(tank0X, tank1X), hiX = Math.max(tank0X, tank1X);
+    var mid = (tank0X + tank1X) / 2, span = hiX - loX;
 
-    for (var i = 0; i < count; i++) {
-      var cx;
-      if (i === 0 && Math.random() < 0.6) {
-        var margin = 350;
-        var lo = Math.min(tank0X, tank1X) + margin;
-        var hi = Math.max(tank0X, tank1X) - margin;
-        cx = lo < hi ? randRange(lo, hi) : (tank0X + tank1X) / 2;
-      } else {
-        var tries = 0;
-        do {
-          cx = randRange(WORLD_W * 0.12, WORLD_W * 0.88);
-          tries++;
-        } while (tries < 10 && (Math.abs(cx - tank0X) < 300 || Math.abs(cx - tank1X) < 300));
-      }
-      terrainMountains.push({
-        cx: cx,
-        width: randRange(220, 380),
-        peakDrop: randRange(0.28, 0.50)
-      });
+    function addMountain(cx, wLo, wHi, dLo, dHi) {
+      terrainMountains.push({ cx: cx, width: randRange(wLo, wHi), peakDrop: randRange(dLo, dHi) });
+    }
+    function randomClearX() {
+      var x, tries = 0;
+      do {
+        x = randRange(WORLD_W * 0.12, WORLD_W * 0.88);
+        tries++;
+      } while (tries < 10 && (Math.abs(x - tank0X) < 300 || Math.abs(x - tank1X) < 300));
+      return x;
+    }
+
+    var layout = pickMountainLayout();
+    currentLayoutName = layout;
+
+    if (layout === "Open Plains") {
+      // No mountains this match - just the fine rolling-hill texture.
+    } else if (layout === "The Ridge") {
+      // One big, roughly-central peak: every shot between the tanks has to
+      // arc over it.
+      addMountain(mid + randRange(-120, 120), 260, 380, 0.38, 0.52);
+    } else if (layout === "Twin Peaks") {
+      // A ridge flanking each side, leaving the middle more open - rewards
+      // using your own peak as cover while dueling across a clearer lane.
+      addMountain(loX + span * 0.28 + randRange(-60, 60), 200, 320, 0.28, 0.42);
+      addMountain(loX + span * 0.72 + randRange(-60, 60), 200, 320, 0.28, 0.42);
+    } else if (layout === "Mountain Range") {
+      // A rugged, scattered range - unpredictable sightlines everywhere.
+      var n = randInt(3, 4);
+      for (var i = 0; i < n; i++) addMountain(randomClearX(), 180, 340, 0.25, 0.48);
+    } else {
+      // Off to the Side: the direct tank-to-tank lane stays clear, but a
+      // prominent peak looms just past one end for movement/cover play.
+      var outward = Math.random() < 0.5 ? loX - randRange(250, 500) : hiX + randRange(250, 500);
+      outward = Math.max(WORLD_W * 0.06, Math.min(WORLD_W * 0.94, outward));
+      addMountain(outward, 240, 380, 0.32, 0.50);
     }
   }
 
@@ -774,7 +799,7 @@
     camZoom = 1;
     centerCameraOnActive();
     updateTurnUI();
-    hideToast();
+    showToast("Terrain: " + currentLayoutName);
     document.getElementById("overlay").classList.remove("show");
   }
 
@@ -1051,10 +1076,6 @@
     el.classList.add("show");
     clearTimeout(toastTimeoutHandle);
     toastTimeoutHandle = setTimeout(function () { el.classList.remove("show"); }, 2800);
-  }
-  function hideToast() {
-    clearTimeout(toastTimeoutHandle);
-    document.getElementById("toast").classList.remove("show");
   }
 
   // ---------- Update loop ----------
