@@ -24,25 +24,26 @@
   #bar {
     flex: 0 0 auto;
     display: flex; align-items: center;
-    gap: 5px;
-    padding: 3px 5px;
+    gap: 6px;
+    padding: 6px 8px;
     background: #1b1f27;
-    border-bottom: 1px solid #000;
+    border-bottom: 2px solid #000;
     box-sizing: border-box;
     z-index: 10;
   }
-  .cluster { display: flex; align-items: center; gap: 3px; }
-  .grp { display: flex; align-items: center; gap: 3px; }
-  .grp-label { font-size: 9px; color: #9aa; letter-spacing: .02em; white-space: nowrap; }
-  .pair { display: flex; gap: 3px; }
+  .cluster { display: flex; align-items: center; gap: 4px; }
+  .grp { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .grp-label { font-size: 10px; color: #9aa; letter-spacing: .03em; white-space: nowrap; }
+  .grp-label b { color: #fff; font-weight: bold; }
+  .pair { display: flex; gap: 4px; }
 
   button.ctl {
     -webkit-tap-highlight-color: transparent;
     touch-action: none;
-    border: none; border-radius: 6px;
+    border: none; border-radius: 8px;
     background: #33394a; color: #fff;
-    font-size: 15px; font-weight: bold;
-    width: 34px; height: 34px;
+    font-size: 18px; font-weight: bold;
+    width: 44px; height: 44px;
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 2px 0 #14161c;
   }
@@ -50,26 +51,26 @@
   button.ctl:disabled { opacity: .35; }
 
   #fireBtn {
-    width: 52px; height: 34px; border-radius: 6px;
-    background: #a8321f; font-size: 12px; letter-spacing: .04em;
+    width: 64px; height: 44px; border-radius: 8px;
+    background: #a8321f; font-size: 14px; letter-spacing: .05em;
   }
   #fireBtn:active, #fireBtn.held { background: #d1432c; }
 
-  #recenterBtn { width: 34px; height: 34px; font-size: 13px; background: #2a5d4a; }
+  #recenterBtn { width: 44px; height: 44px; font-size: 14px; background: #2a5d4a; }
   #recenterBtn:active { background: #367a61; }
 
-  #fsBtn { width: 34px; height: 34px; font-size: 13px; background: #3a3a3a; }
+  #fsBtn { width: 44px; height: 44px; font-size: 14px; background: #3a3a3a; }
   #fsBtn:active { background: #555; }
 
   #status {
     flex: 1 1 auto;
     display: flex; flex-direction: column; justify-content: center;
-    gap: 2px;
-    min-width: 70px;
-    color: #fff; font-size: 11px;
+    gap: 3px;
+    min-width: 90px;
+    color: #fff; font-size: 12px;
   }
-  #turnLabel { font-weight: bold; font-size: 11px; }
-  .fuelWrap { width: 100%; height: 5px; background: #10131a; border-radius: 3px; overflow: hidden; }
+  #turnLabel { font-weight: bold; font-size: 13px; }
+  .fuelWrap { width: 100%; height: 7px; background: #10131a; border-radius: 4px; overflow: hidden; }
   #fuelFill { height: 100%; width: 100%; background: #e0b93a; transition: width .05s linear; }
 
   #canvasWrap { flex: 1 1 auto; position: relative; overflow: hidden; }
@@ -124,14 +125,14 @@
 
     <div class="cluster">
       <div class="grp">
-        <div class="grp-label">ANGLE</div>
+        <div class="grp-label">ANGLE <b id="angleVal">55</b>&deg;</div>
         <div class="pair">
           <button class="ctl" id="btnAngleDown">&#9660;</button>
           <button class="ctl" id="btnAngleUp">&#9650;</button>
         </div>
       </div>
       <div class="grp">
-        <div class="grp-label">POWER</div>
+        <div class="grp-label">POWER <b id="powerVal">55</b></div>
         <div class="pair">
           <button class="ctl" id="btnPowerDown">&minus;</button>
           <button class="ctl" id="btnPowerUp">&plus;</button>
@@ -183,7 +184,7 @@
   var FUEL_PER_SEC = 22;
   var HEALTH_MAX = 100;
   var HIT_RADIUS = 26;
-  var DAMAGE = 25;
+  var DAMAGE = 50;
   var ANGLE_MIN = 5, ANGLE_MAX = 175;
   var ANGLE_RATE = 55; // deg/sec while held
   var POWER_MIN = 15, POWER_MAX = 100;
@@ -256,7 +257,7 @@
   var mountainSeed1 = 0, mountainSeed2 = 0;
 
   function newTank(idx) {
-    var startX = idx === 0 ? WORLD_W * 0.08 : WORLD_W * 0.92;
+    var startX = idx === 0 ? WORLD_W * 0.32 : WORLD_W * 0.68;
     return {
       idx: idx,
       x: startX,
@@ -419,6 +420,11 @@
     var pct = Math.max(0, players[active].fuel) / FUEL_MAX * 100;
     document.getElementById("fuelFill").style.width = pct + "%";
   }
+  function updateAimUI() {
+    var p = players[active];
+    document.getElementById("angleVal").textContent = Math.round(p.angle);
+    document.getElementById("powerVal").textContent = Math.round(p.power);
+  }
 
   // ---------- Update loop ----------
   var lastT = null;
@@ -442,6 +448,7 @@
         }
       }
       updateFuelUI();
+      updateAimUI();
     } else if (state === "flight") {
       bullet.vy += GRAVITY * dt;
       bullet.x += bullet.vx * dt;
