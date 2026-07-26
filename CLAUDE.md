@@ -160,6 +160,23 @@ verifying changes is a headless Playwright script:
   needs one extra refresh cycle to take effect (the old SW has to be
   superseded before the new caching logic runs).
 
+## Keeping this file current
+
+This file is the only memory that carries forward between sessions — treat
+it as living documentation, not a one-time snapshot. Update it as part of
+the same commit whenever a change:
+- adds/removes/renames a `js/*.js` module, or changes what it owns
+- adds a new load-bearing design decision (something reviewed/debated with
+  the user that a future session could plausibly "simplify" back to a worse
+  version)
+- changes a convention (e.g. if the codebase ever moves off `var`)
+- locks/unlocks one of the "Deferred / intentionally locked" features below
+- changes deployment behavior (cache versioning scheme, branch, etc.)
+
+Small bug fixes and tuning-constant tweaks don't need an entry. When in
+doubt, prefer a short addition over silence — this file staying accurate is
+more valuable than it staying short.
+
 ## Deferred / intentionally locked features
 
 Not bugs — these are stubbed for future work and are locked in the UI on
