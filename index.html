@@ -342,7 +342,12 @@
   window.addEventListener("orientationchange", resizeCanvas);
 
   // ---------- Constants ----------
-  var WORLD_W = 3400;
+  var WORLD_W = 2200; // recomputed per match by computeArenaLayout()
+  var PLAYER_SPACING = 1200; // world px between adjacent players at map-size 1x
+  var WING_MARGIN = 500; // scenery/panning buffer beyond the outermost player, each side
+  var MAP_SIZE_MULTIPLIER = 1.0; // future map-size selector (Small/Large) will drive this
+  var ARENA_BUFFER = 300; // slack beyond the outermost player still treated as "the arena"
+  var playerStartXs = []; // computed by computeArenaLayout(), one entry per active player
   var GRAVITY = 260; // px/s^2
   var MOVE_SPEED = 130; // px/s
   var FUEL_MAX = 100;
@@ -397,20 +402,26 @@
 
   function generateTerrainMountains() {
     terrainMountains = [];
-    var tank0X = WORLD_W * 0.32, tank1X = WORLD_W * 0.68;
-    var loX = Math.min(tank0X, tank1X), hiX = Math.max(tank0X, tank1X);
-    var mid = (tank0X + tank1X) / 2, span = hiX - loX;
+    var sorted = playerStartXs.slice().sort(function (a, b) { return a - b; });
+    var loX = sorted[0], hiX = sorted[sorted.length - 1];
+    var span = hiX - loX;
 
     function addMountain(cx, wLo, wHi, dLo, dHi) {
       terrainMountains.push({ cx: cx, width: randRange(wLo, wHi), peakDrop: randRange(dLo, dHi) });
     }
-    function randomClearX() {
+    function farFromAllPlayers(x, minDist) {
+      return playerStartXs.every(function (px) { return Math.abs(x - px) >= minDist; });
+    }
+    // Sampled relative to the arena (the span across all active players)
+    // plus a small buffer, not the full world - so "scattered" features
+    // land near the action instead of lost out in the scenery wings.
+    function randomArenaX() {
       var x, tries = 0;
       do {
-        x = randRange(WORLD_W * 0.12, WORLD_W * 0.88);
+        x = randRange(loX - ARENA_BUFFER, hiX + ARENA_BUFFER);
         tries++;
-      } while (tries < 10 && (Math.abs(x - tank0X) < 300 || Math.abs(x - tank1X) < 300));
-      return x;
+      } while (tries < 10 && !farFromAllPlayers(x, 300));
+      return Math.max(0, Math.min(WORLD_W, x));
     }
 
     var layout = pickMountainLayout();
@@ -419,23 +430,27 @@
     if (layout === "Open Plains") {
       // No mountains this match - just the fine rolling-hill texture.
     } else if (layout === "The Ridge") {
-      // One big, roughly-central peak: every shot between the tanks has to
-      // arc over it.
-      addMountain(mid + randRange(-120, 120), 260, 380, 0.38, 0.52);
+      // One big peak in a randomly chosen gap between two adjacent
+      // players: every shot across that gap has to arc over it.
+      var gapIndex = randInt(0, sorted.length - 2);
+      var gMid = (sorted[gapIndex] + sorted[gapIndex + 1]) / 2;
+      addMountain(gMid + randRange(-120, 120), 260, 380, 0.38, 0.52);
     } else if (layout === "Twin Peaks") {
-      // A ridge flanking each side, leaving the middle more open - rewards
-      // using your own peak as cover while dueling across a clearer lane.
+      // A ridge flanking each side of the arena, leaving the middle more
+      // open - rewards using your own peak as cover while dueling across
+      // a clearer lane.
       addMountain(loX + span * 0.28 + randRange(-60, 60), 200, 320, 0.28, 0.42);
       addMountain(loX + span * 0.72 + randRange(-60, 60), 200, 320, 0.28, 0.42);
     } else if (layout === "Mountain Range") {
-      // A rugged, scattered range - unpredictable sightlines everywhere.
+      // A rugged, scattered range across the arena - unpredictable
+      // sightlines everywhere, but always near the action.
       var n = randInt(3, 4);
-      for (var i = 0; i < n; i++) addMountain(randomClearX(), 180, 340, 0.25, 0.48);
+      for (var i = 0; i < n; i++) addMountain(randomArenaX(), 180, 340, 0.25, 0.48);
     } else {
-      // Off to the Side: the direct tank-to-tank lane stays clear, but a
-      // prominent peak looms just past one end for movement/cover play.
+      // Off to the Side: the arena itself stays clear, but a prominent
+      // peak looms just past one end for movement/cover play.
       var outward = Math.random() < 0.5 ? loX - randRange(250, 500) : hiX + randRange(250, 500);
-      outward = Math.max(WORLD_W * 0.06, Math.min(WORLD_W * 0.94, outward));
+      outward = Math.max(WORLD_W * 0.03, Math.min(WORLD_W * 0.97, outward));
       addMountain(outward, 240, 380, 0.32, 0.50);
     }
   }
@@ -526,7 +541,8 @@
 
   function generateTrees(tankXs) {
     trees = [];
-    var playMinX = WORLD_W * 0.12, playMaxX = WORLD_W * 0.88;
+    var playMinX = Math.max(0, Math.min.apply(null, tankXs) - ARENA_BUFFER);
+    var playMaxX = Math.min(WORLD_W, Math.max.apply(null, tankXs) + ARENA_BUFFER);
     var minDist = 90;
 
     function okX(x) {
@@ -745,6 +761,21 @@
     beginMatchFromConfig();
   });
 
+  // Sizes the arena around however many players are actually in the match:
+  // each active player gets a fixed spacing budget (scaled by map size),
+  // and the world is that arena plus a fixed scenery/panning margin on
+  // each end - so terrain generation can treat "near the arena" and "the
+  // far wings" as genuinely different zones instead of the arena being a
+  // tiny sliver lost in a much bigger, mostly-irrelevant map.
+  function computeArenaLayout() {
+    var n = ACTIVE_SLOTS;
+    var spacing = PLAYER_SPACING * MAP_SIZE_MULTIPLIER;
+    var arenaSpan = spacing * Math.max(1, n - 1);
+    WORLD_W = Math.round(arenaSpan + WING_MARGIN * 2);
+    playerStartXs = [];
+    for (var i = 0; i < n; i++) playerStartXs.push(Math.round(WING_MARGIN + i * spacing));
+  }
+
   // ---------- Game state ----------
   var matchActive = false;
   var players; // array of 2 tank states
@@ -767,7 +798,7 @@
   var mountainSeed1 = 0, mountainSeed2 = 0;
 
   function newTank(idx) {
-    var startX = idx === 0 ? WORLD_W * 0.32 : WORLD_W * 0.68;
+    var startX = playerStartXs[idx];
     var cfg = gameConfig.players[idx];
     return {
       idx: idx,
@@ -784,6 +815,7 @@
   }
 
   function startMatch() {
+    computeArenaLayout();
     generateTerrain();
     players = [newTank(0), newTank(1)];
     active = 0;
