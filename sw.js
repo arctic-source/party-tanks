@@ -1,10 +1,24 @@
-var CACHE_NAME = "party-tanks-v2";
+var CACHE_NAME = "party-tanks-v3";
 var ASSETS = [
   "./",
   "./index.html",
+  "./styles.css",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png"
+  "./icons/icon-512.png",
+  "./js/main.js",
+  "./js/store.js",
+  "./js/constants.js",
+  "./js/utils.js",
+  "./js/canvas.js",
+  "./js/camera.js",
+  "./js/terrain.js",
+  "./js/trees.js",
+  "./js/background.js",
+  "./js/tanks.js",
+  "./js/combat.js",
+  "./js/playerConfig.js",
+  "./js/ui.js"
 ];
 
 self.addEventListener("install", function (event) {
