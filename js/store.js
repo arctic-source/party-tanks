@@ -40,6 +40,15 @@ export var store = {
   wind: 0,
   windLevelIndex: 1, // overwritten by the persisted value on load (playerConfig.js)
 
+  // Bot turn state (bot.js). Only one player ever acts at a time, so this
+  // is a single shared slot, not per-player - reset each time a bot's
+  // turn begins.
+  bot: {
+    active: false, // true for the whole duration of the bot's turn (any phase)
+    phase: null, // null | "moving" | "waiting"
+    waitTimer: 0 // seconds left in the "waiting" (thinking) phase before firing
+  },
+
   // Camera: camCenterX/Y is the world point shown at the center of the
   // screen; camZoom scales world units to screen pixels.
   camCenterX: 0,

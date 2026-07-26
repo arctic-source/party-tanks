@@ -57,3 +57,24 @@ export var COLOR_PALETTE = [
 export var PLAYER_SLOTS = 7;
 export var ACTIVE_SLOTS = 2;
 export var PLAYER_CONFIG_KEY = "partytanks.players.v1";
+
+// ---------- Bot AI ----------
+// Dry-run trajectory search (bot.js) - how finely it grid-searches
+// angle/power before firing. Not a difficulty knob, just a speed/accuracy
+// tradeoff for the search itself.
+export var AI_SIM_DT = 1 / 30; // seconds per simulated step
+export var AI_SIM_MAX_TIME = 8; // seconds - safety cutoff per simulated shot
+export var AI_COARSE_ANGLE_STEPS = 18;
+export var AI_COARSE_POWER_STEPS = 15;
+export var AI_REFINE_STEPS = 10; // per-axis resolution of the refine pass around the coarse best
+export var AI_UNREACHABLE_THRESHOLD = 120; // px - beyond this miss distance at max effort, the bot drives closer instead of firing
+
+// Difficulty presets. Only "medium" exists for now; easy/hard are future
+// entries in this same table, not a separate code path.
+export var AI_LEVELS = {
+  medium: {
+    aimStdDev: 45,        // px - stddev of the Gaussian-perturbed aim point around the opponent
+    thinkDelayMin: 0.5,   // seconds of "thinking" pause before committing to a shot
+    thinkDelayMax: 1.2
+  }
+};

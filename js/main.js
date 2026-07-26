@@ -19,6 +19,7 @@ import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tan
 import { fire, resolveImpact, afterResolve } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, applyPlayerConfigToGame } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, updateWindUI, showToast, updateFsButton } from "./ui.js";
+import { runBot } from "./bot.js";
 
 // Sizes the arena around however many players are actually in the match:
 // each active player gets a fixed spacing budget (scaled by map size),
@@ -62,6 +63,11 @@ function startMatch() {
   generateClouds();
   generateWind();
   updateWindUI();
+  store.held.left = false;
+  store.held.right = false;
+  store.bot.active = false;
+  store.bot.phase = null;
+  store.bot.waitTimer = 0;
   store.camZoom = 1;
   centerCameraOnActive();
   updateTurnUI();
@@ -88,6 +94,7 @@ bindHold("btnPowerDown", "powerDown");
 
 document.getElementById("fireBtn").addEventListener("pointerdown", function (e) {
   e.preventDefault();
+  if (store.players[store.active].isBot) return; // the bot fires itself via bot.js
   fire();
 });
 document.getElementById("recenterBtn").addEventListener("pointerdown", function (e) {
@@ -153,12 +160,21 @@ canvasWrap.addEventListener("pointercancel", onPointerUp);
 function update(dt) {
   if (store.state === "aim") {
     var p = store.players[store.active];
-    if (store.held.angleUp) p.angle = Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt);
-    if (store.held.angleDown) p.angle = Math.max(ANGLE_MIN, p.angle - ANGLE_RATE * dt);
-    if (store.held.powerUp) p.power = Math.min(POWER_MAX, p.power + POWER_RATE * dt);
-    if (store.held.powerDown) p.power = Math.max(POWER_MIN, p.power - POWER_RATE * dt);
+    if (p.isBot) {
+      runBot(dt);
+    } else {
+      if (store.held.angleUp) p.angle = Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt);
+      if (store.held.angleDown) p.angle = Math.max(ANGLE_MIN, p.angle - ANGLE_RATE * dt);
+      if (store.held.powerUp) p.power = Math.min(POWER_MAX, p.power + POWER_RATE * dt);
+      if (store.held.powerDown) p.power = Math.max(POWER_MIN, p.power - POWER_RATE * dt);
+    }
 
-    if (p.fuel > 0) {
+    // The bot reuses this same movement/fuel mechanic for its own
+    // "drive toward the opponent" phase (see bot.js) - but only then, so a
+    // stray held-key state can't reposition the bot's tank during its
+    // "waiting to fire" pause after it's already aimed from a position.
+    var canMove = !p.isBot || store.bot.phase === "moving";
+    if (canMove && p.fuel > 0) {
       var mv = 0;
       if (store.held.left) mv -= 1;
       if (store.held.right) mv += 1;

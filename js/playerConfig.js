@@ -107,7 +107,23 @@ function buildPlayerRow(i) {
   var botBtn = document.createElement("button");
   botBtn.className = "modeBtn" + (cfg.mode === "bot" ? " active" : "");
   botBtn.textContent = "Bot";
-  botBtn.disabled = true; // locked for now - no AI opponent yet
+  botBtn.disabled = !active;
+  if (active) {
+    humanBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (cfg.mode === "human") return;
+      cfg.mode = "human";
+      savePlayerConfigs();
+      renderPlayerRows();
+    });
+    botBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (cfg.mode === "bot") return;
+      cfg.mode = "bot";
+      savePlayerConfigs();
+      renderPlayerRows();
+    });
+  }
   modeWrap.appendChild(humanBtn);
   modeWrap.appendChild(botBtn);
   row.appendChild(modeWrap);
@@ -126,7 +142,7 @@ export function applyPlayerConfigToGame() {
   store.gameConfig.players = [0, 1].map(function (i) {
     var cfg = store.playerConfigs[i];
     var c = COLOR_PALETTE[cfg.colorIndex];
-    return { name: cfg.name, color: c.body, colorDark: c.dark };
+    return { name: cfg.name, color: c.body, colorDark: c.dark, isBot: cfg.mode === "bot" };
   });
 }
 

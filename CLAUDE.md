@@ -30,6 +30,8 @@ js/
   combat.js        fire(), resolveImpact(), tree-fire damage, turn resolution
   playerConfig.js  pre-game screens, player name/color + wind config persistence
   ui.js            turn/fuel/aim HUD text, toasts, fullscreen button state
+  bot.js           medium-difficulty AI: dry-run trajectory search + aim
+                   noise + move-when-unreachable turn state machine
   main.js          orchestrator: wires up all event listeners, the
                    update/render loop, computeArenaLayout(), boot()
 ```
@@ -127,6 +129,42 @@ These came out of real back-and-forth with the user — don't casually
   config. The in-match arrow+percentage readout (`ui.js: updateWindUI()`)
   is set once at match start, not per frame — wind doesn't change mid-round
   so there's nothing to re-render.
+- **The bot AI aims by perturbing the target point, not the angle/power
+  outputs.** (`bot.js`.) It runs a coarse-to-fine grid search (`findBestShot`
+  → `simulateLanding`, a dry-run copy of the real flight physics that never
+  touches `store.bullet`) to find the angle/power whose simulated landing
+  spot is closest to a target x. To miss on purpose, it perturbs that
+  target x with one Gaussian (`AI_LEVELS.medium.aimStdDev`) *before*
+  searching, rather than adding two separately-tuned angle and power noise
+  terms after. This was a deliberate simplification: a fixed angle-space
+  error produces wildly different miss distances depending on range (tiny
+  angle error + max range = huge miss; same error at point-blank barely
+  moves the landing spot), while target-point noise gives a consistent,
+  easy-to-tune miss radius regardless of range. Don't reintroduce
+  angle/power-space noise without re-deriving that tradeoff.
+- **The bot has no memory between shots.** Every turn re-runs the search
+  from scratch against a freshly-rolled perturbed target — no bracketing/
+  walking-in behavior, intentionally, to keep it stateless and simple.
+  This was an explicit scope cut for the first (medium-only) difficulty
+  level; don't add cross-turn aim correction without discussing it first,
+  since easy/hard tiers may want to build on this differently.
+- **The bot only moves when the true target is unreachable at max
+  effort** (`AI_UNREACHABLE_THRESHOLD` in `constants.js`), and when it
+  does, it commits to one uninterrupted drive using the exact same
+  held-key + fuel mechanics a human uses, for the rest of the turn's fuel,
+  with no re-checking mid-drive — then re-aims exactly once from the new
+  position. This was a deliberate simplification over an earlier
+  iterative "move a bit, recheck, repeat" design: a single commit avoids
+  a multi-attempt retry loop entirely while still producing the visible
+  "bot drives closer when it has to" behavior. `main.js: update()` gates
+  the shared movement code with `!p.isBot || store.bot.phase ===
+  "moving"` specifically so a stray held-key state can't reposition the
+  bot's tank during its post-aim "waiting to fire" pause.
+- **Bot difficulty is one shared table, not per-level code paths.**
+  (`AI_LEVELS` in `constants.js`, currently only the `medium` entry.)
+  Easy/hard should be added as new entries with different `aimStdDev`/
+  `thinkDelay*` values, not new branches in `bot.js` - the search and
+  move-when-unreachable logic aren't difficulty-specific.
 
 ## Conventions
 
@@ -175,7 +213,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v4`). **Bump this version any time you change
+  (currently `party-tanks-v5`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -212,5 +250,8 @@ purpose:
   fixed at `1.0` — there's no Small/Large selector yet, though
   `computeArenaLayout()` already reads this constant so wiring one up is
   mostly a UI task.
-- **Bot/AI opponents**: player slots 3-7 and the "Bot" mode toggle are
-  visibly present but disabled — no AI implementation exists yet.
+- **Bot/AI opponents**: player slots 3-7 are still visibly present but
+  disabled (no >2-player support yet). Slots 0-1 now support a real Bot
+  toggle, but only one difficulty exists (`AI_LEVELS.medium` in
+  `constants.js`) - there's no easy/hard selector yet, though `bot.js`
+  is already structured so adding one is new table entries, not new logic.

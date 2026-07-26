@@ -3,6 +3,14 @@
 export function randRange(a, b) { return a + Math.random() * (b - a); }
 export function randInt(a, b) { return Math.floor(randRange(a, b + 1)); }
 
+// Box-Muller transform - one sample from a normal distribution.
+export function gaussianRandom(mean, stddev) {
+  var u1 = Math.random() || 1e-9; // avoid log(0)
+  var u2 = Math.random();
+  var z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  return mean + z0 * stddev;
+}
+
 export function pseudoRandom(seed) {
   var v = Math.sin(seed * 12.9898) * 43758.5453;
   return v - Math.floor(v);

@@ -16,6 +16,7 @@ export function newTank(idx) {
     name: cfg.name,
     color: cfg.color,
     colorDark: cfg.colorDark,
+    isBot: !!cfg.isBot,
     alive: true
   };
 }
