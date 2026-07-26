@@ -356,6 +356,7 @@
   var HIT_RADIUS = 26;
   var MIN_DAMAGE = 30; // grazing hit near the edge of HIT_RADIUS
   var MAX_DAMAGE = 70; // dead-center hit
+  var SELF_DAMAGE_GRACE = 0.25; // seconds before a bullet can hit its own shooter
   var CRATER_RADIUS = 18; // world px
   var CRATER_DEPTH = 0.05; // fraction of VIEW_H
   var ANGLE_MIN = 5, ANGLE_MAX = 175;
@@ -1005,7 +1006,8 @@
       x: p.x + dir * (TANK_HALF_W + 6),
       y: terrainHeightAt(p.x) - TANK_HALF_H - 10,
       vx: Math.cos(rad) * speed * dir,
-      vy: -Math.sin(rad) * speed
+      vy: -Math.sin(rad) * speed,
+      elapsed: 0
     };
     state = "flight";
   }
@@ -1016,6 +1018,9 @@
       var t = Math.max(0, Math.min(1, (hitDist || 0) / HIT_RADIUS));
       dmg = Math.round(MAX_DAMAGE - (MAX_DAMAGE - MIN_DAMAGE) * t);
       hitTank.health = Math.max(0, hitTank.health - dmg);
+      if (hitTank === players[active]) {
+        showToast("💥 " + hitTank.name + " caught themselves in the blast for " + dmg + " damage!");
+      }
     }
     impactFlash = { x: x, y: y, t: 0.5, damageText: dmg };
     lastImpact[active] = { x: x, y: y, hitTank: !!hitTank };
@@ -1141,16 +1146,28 @@
       bullet.vy += GRAVITY * dt;
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
+      bullet.elapsed += dt;
 
       // camera follows bullet
       camCenterX = bullet.x;
       camCenterY = bullet.y;
       clampCam();
 
+      var shooter = players[active];
       var defender = players[1 - active];
       var dx = bullet.x - defender.x;
       var dy = bullet.y - (terrainHeightAt(defender.x) - TANK_HALF_H);
       var dist2 = dx * dx + dy * dy;
+
+      // Self-damage only arms after a brief grace period so the bullet
+      // clears its own barrel first - otherwise every shot would trigger
+      // an instant self-hit at the spawn point right next to the tank.
+      var selfDist2 = null;
+      if (bullet.elapsed >= SELF_DAMAGE_GRACE) {
+        var sdx = bullet.x - shooter.x;
+        var sdy = bullet.y - (terrainHeightAt(shooter.x) - TANK_HALF_H);
+        selfDist2 = sdx * sdx + sdy * sdy;
+      }
 
       var hitTree = null;
       for (var ti = 0; ti < trees.length; ti++) {
@@ -1169,6 +1186,8 @@
         resolveImpact(bullet.x, bullet.y, null);
       } else if (bullet.x < 0 || bullet.x > WORLD_W) {
         resolveImpact(bullet.x, bullet.y, null);
+      } else if (selfDist2 !== null && selfDist2 <= HIT_RADIUS * HIT_RADIUS) {
+        resolveImpact(bullet.x, bullet.y, shooter, Math.sqrt(selfDist2));
       } else if (dist2 <= HIT_RADIUS * HIT_RADIUS) {
         resolveImpact(bullet.x, bullet.y, defender, Math.sqrt(dist2));
       } else if (bullet.y >= terrainHeightAt(bullet.x)) {
