@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { COLOR_PALETTE, PLAYER_SLOTS, ACTIVE_SLOTS, PLAYER_CONFIG_KEY } from "./constants.js";
+import { COLOR_PALETTE, PLAYER_SLOTS, ACTIVE_SLOTS, PLAYER_CONFIG_KEY, WIND_LEVELS, WIND_LEVEL_KEY } from "./constants.js";
 
 export function showScreen(id) {
   ["screenWelcome", "screenPlayers", "screenRounds", "screenMatch"].forEach(function (sid) {
@@ -128,4 +128,37 @@ export function applyPlayerConfigToGame() {
     var c = COLOR_PALETTE[cfg.colorIndex];
     return { name: cfg.name, color: c.body, colorDark: c.dark };
   });
+}
+
+function loadWindLevelIndex() {
+  try {
+    var raw = localStorage.getItem(WIND_LEVEL_KEY);
+    var idx = raw !== null ? parseInt(raw, 10) : NaN;
+    if (!isNaN(idx) && WIND_LEVELS[idx]) return idx;
+  } catch (e) {}
+  return 1; // default: Light
+}
+
+function saveWindLevelIndex() {
+  try { localStorage.setItem(WIND_LEVEL_KEY, String(store.windLevelIndex)); } catch (e) {}
+}
+
+store.windLevelIndex = loadWindLevelIndex();
+
+export function renderWindConfig() {
+  var valueEl = document.getElementById("windValueDisplay");
+  var leftBtn = document.getElementById("windArrowLeftBtn");
+  var rightBtn = document.getElementById("windArrowRightBtn");
+  if (!valueEl) return;
+  valueEl.textContent = WIND_LEVELS[store.windLevelIndex].name;
+  leftBtn.disabled = store.windLevelIndex <= 0;
+  rightBtn.disabled = store.windLevelIndex >= WIND_LEVELS.length - 1;
+}
+
+export function changeWindLevel(delta) {
+  var next = Math.max(0, Math.min(WIND_LEVELS.length - 1, store.windLevelIndex + delta));
+  if (next === store.windLevelIndex) return;
+  store.windLevelIndex = next;
+  saveWindLevelIndex();
+  renderWindConfig();
 }

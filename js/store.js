@@ -33,6 +33,13 @@ export var store = {
   impactFlash: null, // {x, y, t, damageText}
   lastImpact: [null, null], // per-player last shot landing spot {x, y, hitTank}
 
+  // Wind: constant for the whole round (currently the whole match, since
+  // rounds are locked to 1). Signed magnitude in [-1, 1] - sign is
+  // direction, |value| is strength - rolled once per round from the band
+  // the selected windLevelIndex points at in WIND_LEVELS.
+  wind: 0,
+  windLevelIndex: 1, // overwritten by the persisted value on load (playerConfig.js)
+
   // Camera: camCenterX/Y is the world point shown at the center of the
   // screen; camZoom scales world units to screen pixels.
   camCenterX: 0,

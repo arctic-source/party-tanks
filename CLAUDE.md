@@ -28,7 +28,7 @@ js/
   background.js    sky gradient, parallax mountain layers, clouds
   tanks.js         tank creation + drawing (tank/bullet/flash/impact marks)
   combat.js        fire(), resolveImpact(), tree-fire damage, turn resolution
-  playerConfig.js  pre-game screens, player name/color persistence
+  playerConfig.js  pre-game screens, player name/color + wind config persistence
   ui.js            turn/fuel/aim HUD text, toasts, fullscreen button state
   main.js          orchestrator: wires up all event listeners, the
                    update/render loop, computeArenaLayout(), boot()
@@ -88,11 +88,24 @@ These came out of real back-and-forth with the user — don't casually
   (dead-center) to `MIN_DAMAGE` (edge of `HIT_RADIUS`), in
   `combat.js: resolveImpact`. This was implemented only after being reviewed
   critically per the user's request — it's intentional, not a placeholder.
+- **Bullets spawn at the barrel tip**, not a fixed offset from the tank
+  body. `combat.js: fire()` computes the same pivot point + direction
+  vector (`BARREL_LENGTH`, `BARREL_PIVOT_Y` in `constants.js`) that
+  `tanks.js: drawTank()` uses to draw the barrel and the yellow aim arrow -
+  so the bullet always visibly leaves from where the arrow points, at any
+  angle. Keep the physics and the drawing reading from the same constants;
+  don't reintroduce a separate fixed offset for the spawn point.
 - **Self-damage has a grace period** (`SELF_DAMAGE_GRACE = 0.25s`) before a
   bullet can hit its own shooter. Without it, every shot would register an
   instant self-hit at the barrel's spawn point, which sits inside the
-  shooter's own `HIT_RADIUS`. Realistic self-hits require a backward-arcing
-  shot (angle > 90°) so the bullet's x crosses back through the shooter.
+  shooter's own `HIT_RADIUS`. Since bullets spawn at the barrel tip (see
+  below), self-hits now happen on near-vertical shots (roughly 80°-95°) that
+  go mostly straight up and fall back down near their own x - not on
+  backward-arcing (angle > 90°) shots as an earlier version of this file
+  said. That description was written for a since-replaced spawn-point
+  formula; re-verify empirically (sweep angles with wind forced to 0, see
+  Testing workflow) before trusting either description again if this code
+  changes.
 - **Trees have a 3-state lifecycle**: alive → burning (ignites on bullet
   hit, stops blocking bullets, damages nearby tanks each turn via
   `applyTreeFireDamage`) → ash (`BURN_TURNS` turns later, rendered behind
@@ -103,6 +116,17 @@ These came out of real back-and-forth with the user — don't casually
   `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` are editable; the rest
   are locked placeholders for a future bot/more-players feature — that's
   intentional, not a bug.
+- **Wind is rolled once per round, not per shot.** (`store.wind`, a signed
+  value in `[-1, 1]` — sign is direction, magnitude is strength — set by
+  `main.js: generateWind()` inside `startMatch()`.) It only affects the
+  bullet in flight (`bullet.vx += store.wind * WIND_MAX_ACCEL * dt`, next to
+  gravity's `vy` accel in `main.js: update()`), never tank movement. The
+  magnitude is drawn from a band picked by the config screen's None/Light/
+  Strong selector (`WIND_LEVELS` in `constants.js`); the selected level
+  persists via `localStorage` (`WIND_LEVEL_KEY`), same pattern as player
+  config. The in-match arrow+percentage readout (`ui.js: updateWindUI()`)
+  is set once at match start, not per frame — wind doesn't change mid-round
+  so there's nothing to re-render.
 
 ## Conventions
 
@@ -151,7 +175,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v3`). **Bump this version any time you change
+  (currently `party-tanks-v4`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -184,7 +208,6 @@ purpose:
 - **Rounds** is locked to 1 (no best-of-N yet).
 - **Map** is locked to "Chill Forest" (no map selector yet, though the
   terrain-generation system already supports variation within it).
-- **Wind** is locked to "None" (no wind mechanic implemented).
 - **Map size multiplier** (`MAP_SIZE_MULTIPLIER` in `constants.js`) is
   fixed at `1.0` — there's no Small/Large selector yet, though
   `computeArenaLayout()` already reads this constant so wiring one up is

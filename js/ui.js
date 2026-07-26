@@ -25,6 +25,25 @@ export function updateAimUI() {
   document.getElementById("powerVal").textContent = Math.round(p.power);
 }
 
+// Wind is constant for the whole round, so this only needs to be called
+// once at match start, not every frame.
+export function updateWindUI() {
+  var w = store.wind;
+  var arrowEl = document.getElementById("windArrow");
+  var pctEl = document.getElementById("windPct");
+  if (!arrowEl || !pctEl) return;
+  if (w === 0) {
+    arrowEl.textContent = "–"; // –
+    arrowEl.style.opacity = "0.5";
+    pctEl.textContent = "Calm";
+  } else {
+    var pct = Math.round(Math.abs(w) * 100);
+    arrowEl.textContent = w > 0 ? "→" : "←"; // → or ←
+    arrowEl.style.opacity = (0.55 + Math.abs(w) * 0.45).toFixed(2);
+    pctEl.textContent = pct + "%";
+  }
+}
+
 export function showToast(msg) {
   var el = document.getElementById("toast");
   el.textContent = msg;

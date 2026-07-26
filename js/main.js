@@ -1,11 +1,12 @@
 import { store } from "./store.js";
 import {
   PLAYER_SPACING, WING_MARGIN, MAP_SIZE_MULTIPLIER,
-  GRAVITY, MOVE_SPEED, FUEL_MAX, FUEL_PER_SEC,
+  GRAVITY, WIND_MAX_ACCEL, WIND_LEVELS, MOVE_SPEED, FUEL_MAX, FUEL_PER_SEC,
   HIT_RADIUS, ANGLE_MIN, ANGLE_MAX, ANGLE_RATE, POWER_MIN, POWER_MAX, POWER_RATE,
   TANK_HALF_H, TREE_BASE_HEIGHT, TREE_CANOPY_FRAC, TREE_RADIUS_FRAC, BURN_TURNS,
   SELF_DAMAGE_GRACE
 } from "./constants.js";
+import { randRange } from "./utils.js";
 import { ctx, canvasWrap, resizeCanvas } from "./canvas.js";
 import {
   centerCameraOnActive, recenterView, clampCam,
@@ -16,8 +17,8 @@ import { generateTrees, generateBgTrees, drawTrees } from "./trees.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
-import { showScreen, renderPlayerRows, applyPlayerConfigToGame } from "./playerConfig.js";
-import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
+import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, applyPlayerConfigToGame } from "./playerConfig.js";
+import { updateTurnUI, updateFuelUI, updateAimUI, updateWindUI, showToast, updateFsButton } from "./ui.js";
 
 // Sizes the arena around however many players are actually in the match:
 // each active player gets a fixed spacing budget (scaled by map size),
@@ -35,6 +36,16 @@ function computeArenaLayout() {
   store.playerStartXs = xs;
 }
 
+// Wind is constant for the whole round (currently the whole match, since
+// rounds are locked to 1) - rolled once here rather than per shot, from
+// the magnitude band the config screen's selected level points at.
+function generateWind() {
+  var level = WIND_LEVELS[store.windLevelIndex];
+  if (level.max <= 0) { store.wind = 0; return; }
+  var mag = randRange(level.min, level.max);
+  store.wind = Math.random() < 0.5 ? -mag : mag;
+}
+
 function startMatch() {
   computeArenaLayout();
   generateTerrain();
@@ -49,6 +60,8 @@ function startMatch() {
   generateTrees([store.players[0].x, store.players[1].x]);
   generateBgTrees();
   generateClouds();
+  generateWind();
+  updateWindUI();
   store.camZoom = 1;
   centerCameraOnActive();
   updateTurnUI();
@@ -105,6 +118,14 @@ document.getElementById("startGameBtn").addEventListener("pointerdown", function
   e.preventDefault();
   beginMatchFromConfig();
 });
+document.getElementById("windArrowLeftBtn").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  changeWindLevel(-1);
+});
+document.getElementById("windArrowRightBtn").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  changeWindLevel(1);
+});
 
 // ---------- Fullscreen toggle ----------
 document.addEventListener("fullscreenchange", updateFsButton);
@@ -157,6 +178,7 @@ function update(dt) {
   } else if (store.state === "flight") {
     var bullet = store.bullet;
     bullet.vy += GRAVITY * dt;
+    bullet.vx += store.wind * WIND_MAX_ACCEL * dt;
     bullet.x += bullet.vx * dt;
     bullet.y += bullet.vy * dt;
     bullet.elapsed += dt;
@@ -257,6 +279,7 @@ function beginMatchFromConfig() {
 // ---------- Boot ----------
 function boot() {
   renderPlayerRows();
+  renderWindConfig();
   showScreen("screenWelcome");
   requestAnimationFrame(frame);
 }

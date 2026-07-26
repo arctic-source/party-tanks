@@ -25,6 +25,9 @@ html, body {
 .grp-label b { color: #fff; font-weight: bold; }
 .pair { display: flex; gap: 4px; flex: 0 0 auto; }
 
+.windReadout { display: flex; align-items: center; gap: 4px; color: #fff; font-size: 12px; height: 44px; }
+.windArrowChar { font-size: 20px; font-weight: bold; display: inline-block; transition: opacity .2s; }
+
 button.ctl {
   -webkit-tap-highlight-color: transparent;
   touch-action: none;

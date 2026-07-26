@@ -8,6 +8,13 @@ export var MAP_SIZE_MULTIPLIER = 1.0; // future map-size selector (Small/Large) 
 export var ARENA_BUFFER = 300; // slack beyond the outermost player still treated as "the arena"
 
 export var GRAVITY = 260; // px/s^2
+export var WIND_MAX_ACCEL = 80; // px/s^2 horizontal accel on the bullet at wind magnitude 1.0 - noticeably bends trajectories without overpowering GRAVITY
+export var WIND_LEVELS = [
+  { name: "None", min: 0, max: 0 },
+  { name: "Light", min: 0.15, max: 0.45 },
+  { name: "Strong", min: 0.5, max: 1.0 }
+];
+export var WIND_LEVEL_KEY = "partytanks.windLevel.v1";
 export var MOVE_SPEED = 130; // px/s
 export var FUEL_MAX = 100;
 export var FUEL_PER_SEC = 22;
