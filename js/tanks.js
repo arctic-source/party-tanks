@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { HEALTH_MAX, FUEL_MAX, TANK_HALF_W, TANK_HALF_H, POWER_MAX } from "./constants.js";
+import { HEALTH_MAX, FUEL_MAX, TANK_HALF_W, TANK_HALF_H, POWER_MAX, BARREL_LENGTH, BARREL_PIVOT_Y } from "./constants.js";
 import { ctx } from "./canvas.js";
 import { terrainHeightAt } from "./terrain.js";
 
@@ -58,8 +58,8 @@ export function drawTank(p) {
   ctx.strokeStyle = p.colorDark;
   ctx.lineWidth = 5 / store.camZoom;
   ctx.beginPath();
-  ctx.moveTo(0, -4);
-  ctx.lineTo(bx * 26, -4 + by * 26);
+  ctx.moveTo(0, -BARREL_PIVOT_Y);
+  ctx.lineTo(bx * BARREL_LENGTH, -BARREL_PIVOT_Y + by * BARREL_LENGTH);
   ctx.stroke();
 
   ctx.restore();
@@ -70,12 +70,12 @@ export function drawTank(p) {
     ctx.strokeStyle = "rgba(255,255,60,0.9)";
     ctx.lineWidth = 3 / store.camZoom;
     ctx.beginPath();
-    ctx.moveTo(sx, cy - 4);
-    ctx.lineTo(sx + bx * len, cy - 4 + by * len);
+    ctx.moveTo(sx, cy - BARREL_PIVOT_Y);
+    ctx.lineTo(sx + bx * len, cy - BARREL_PIVOT_Y + by * len);
     ctx.stroke();
     // arrow head
     ctx.beginPath();
-    var hx = sx + bx * len, hy = cy - 4 + by * len;
+    var hx = sx + bx * len, hy = cy - BARREL_PIVOT_Y + by * len;
     ctx.moveTo(hx, hy);
     ctx.lineTo(hx - bx * 8 - by * 5, hy - by * 8 + bx * 5);
     ctx.lineTo(hx - bx * 8 + by * 5, hy - by * 8 - bx * 5);

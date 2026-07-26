@@ -1,23 +1,30 @@
 import { store } from "./store.js";
 import {
-  TANK_HALF_W, TANK_HALF_H, POWER_TO_SPEED, HIT_RADIUS, MIN_DAMAGE, MAX_DAMAGE,
+  TANK_HALF_H, POWER_TO_SPEED, BARREL_LENGTH, BARREL_PIVOT_Y, HIT_RADIUS, MIN_DAMAGE, MAX_DAMAGE,
   CRATER_RADIUS, CRATER_DEPTH, TREE_FIRE_RADIUS, TREE_FIRE_DAMAGE, FUEL_MAX
 } from "./constants.js";
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive } from "./camera.js";
 import { updateTurnUI, showToast } from "./ui.js";
 
+// Spawns at the barrel tip rather than a fixed offset from the tank body,
+// using the same pivot point + direction vector drawTank() draws the
+// barrel/aim arrow with - so the bullet always visibly leaves from where
+// the yellow arrow points, at any angle.
 export function fire() {
   if (store.state !== "aim") return;
   var p = store.players[store.active];
   var rad = p.angle * Math.PI / 180;
   var dir = p.idx === 0 ? 1 : -1;
+  var bx = Math.cos(rad) * dir;
+  var by = -Math.sin(rad);
   var speed = p.power * POWER_TO_SPEED;
+  var pivotY = terrainHeightAt(p.x) - TANK_HALF_H - BARREL_PIVOT_Y;
   store.bullet = {
-    x: p.x + dir * (TANK_HALF_W + 6),
-    y: terrainHeightAt(p.x) - TANK_HALF_H - 10,
-    vx: Math.cos(rad) * speed * dir,
-    vy: -Math.sin(rad) * speed,
+    x: p.x + bx * BARREL_LENGTH,
+    y: pivotY + by * BARREL_LENGTH,
+    vx: bx * speed,
+    vy: by * speed,
     elapsed: 0
   };
   store.state = "flight";

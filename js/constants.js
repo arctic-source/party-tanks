@@ -26,6 +26,8 @@ export var POWER_RATE = 45; // units/sec while held
 export var POWER_TO_SPEED = 7.2; // maps power units -> initial bullet speed px/s
 
 export var TANK_HALF_W = 20, TANK_HALF_H = 12;
+export var BARREL_LENGTH = 26; // px, at scale 1 - shared by drawing and bullet spawn point
+export var BARREL_PIVOT_Y = 4; // px above the tank's local origin where the barrel pivots
 export var ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
 
 export var TREE_BASE_HEIGHT = 40; // px at scale 1
