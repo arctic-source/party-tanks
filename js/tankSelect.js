@@ -54,6 +54,7 @@ function renderTile(type, p) {
   btn.appendChild(info);
   btn.addEventListener("pointerdown", function (e) {
     e.preventDefault();
+    e.stopPropagation();
     chooseTankType(type.key);
   });
   return btn;
@@ -98,12 +99,26 @@ function advanceOrFinish() {
 // or finishTankSelection()'s own toast, so it would just get clobbered
 // before ever painting. The box->tank reveal itself is the feedback; both
 // tanks become visible together the moment the overlay finally closes.
+//
+// advanceOrFinish() is deferred by one frame rather than called inline -
+// a single physical tap on a touch device can dispatch more than one
+// pointer event (pointerdown, then a trailing pointerup/synthetic click),
+// and advanceOrFinish() replaces the tapped tile's entire DOM subtree
+// (rendering the next player's list at the same on-screen position). A
+// stray trailing event from the same tap landing on that freshly-drawn
+// list, before the browser has finished this tap's event sequence, was
+// exactly the bug reported: it read the now-advanced store.active and
+// applied a second, unintended pick to the other player, who never saw
+// their own screen. The p.selected guard below is the real backstop -
+// deferring just keeps the DOM stable long enough for a same-tap ghost
+// event to resolve against the tile that's still there, not a new one.
 export function chooseTankType(key) {
   var p = store.players[store.active];
+  if (p.selected) return;
   applyTankType(p, key);
   p.selected = true;
   p.fuel = FUEL_MAX;
-  advanceOrFinish();
+  requestAnimationFrame(advanceOrFinish);
 }
 
 // Bots don't need the UI - they just pick a random type immediately, same

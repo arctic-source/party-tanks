@@ -56,7 +56,7 @@ function beginPan(id) {
 }
 
 export function onPointerDown(e) {
-  if (store.state === "gameover") return;
+  if (store.state === "gameover" || store.state === "select") return;
   store.activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
   var ids = pointerIds();
   if (ids.length === 2) {
