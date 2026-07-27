@@ -147,9 +147,16 @@ export var AI_LEVELS = {
     thinkDelayMax: 1.2,
     rangeNearPx: 300,          // at or below this shooter-opponent distance, noise is at its floor
     rangeFarPx: 1200,          // at or above this distance, noise is at its full (aimStdDev) ceiling
-    rangeNoiseFloorMult: 0.4,  // noise multiplier at rangeNearPx or closer
+    rangeNoiseFloorMult: 0.65, // noise multiplier at rangeNearPx or closer
     recalibrateDistPx: 120,    // opponent displacement (since this shooter's last shot) that fully resets confidence
-    confidenceNoiseFloorMult: 0.5, // noise multiplier when the opponent hasn't moved at all since last shot
+    confidenceNoiseFloorMult: 0.75, // noise multiplier when the opponent hasn't moved at all since last shot
+    // These two floors compound multiplicatively (close AND confident applies
+    // both), so tune them together: at 0.65/0.75 the tightest case is
+    // 45 * 0.65 * 0.75 ~= 22px - comparable to a tank's own hit-box half-width
+    // (17-26px depending on type), not tighter than it. The old 0.4/0.5 floors
+    // compounded to ~9px, well inside every hit box, which is why the bot felt
+    // unbeatable at close, stable range - don't drop either floor back below
+    // here without re-checking hit rate against TANK_TYPES' hitHalfWidth.
     evadeChance: 0.6,          // odds of fleeing instead of aiming, when the opponent's last shot landed close
     evadeTriggerDistPx: 180,   // "close" threshold for the above
     evadeDistMin: 40,          // px - most evasive moves are small...
