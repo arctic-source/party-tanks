@@ -1,7 +1,7 @@
 import { store } from "./store.js";
 import { TANK_TYPES, WIND_LEVELS, FUEL_MAX } from "./constants.js";
 import { randRange } from "./utils.js";
-import { centerCameraOnActive } from "./camera.js";
+import { centerCameraOnActive, centerCameraOnActiveOffset } from "./camera.js";
 import { applyTankType, drawTankPreview } from "./tanks.js";
 import { applyPlayerTheme, updateTurnUI, updateWindUI, showToast } from "./ui.js";
 
@@ -19,6 +19,13 @@ function generateWind() {
 function setOverlayVisible(visible) {
   document.getElementById("tankSelectOverlay").classList.toggle("show", visible);
   document.getElementById("bar").style.display = visible ? "none" : "";
+}
+
+// The panel's CSS width is fixed regardless of its slide transform, so
+// this stays accurate whether the panel is currently shown or hidden -
+// letting the camera-offset math below always match the real layout.
+function panelOffsetPx() {
+  return document.getElementById("tankSelectOverlay").getBoundingClientRect().width;
 }
 
 // Tapping a tile only highlights it (pendingKey) - the actual pick isn't
@@ -152,14 +159,19 @@ export function confirmTankSelection() {
 }
 
 // Bots don't need the UI - they just pick a random type immediately, same
-// visible "box becomes tank" reveal a human's pick would trigger.
+// visible "box becomes tank" reveal a human's pick would trigger. The
+// panel is slid away for a bot's turn (defensive: guards against a human
+// turn immediately preceding a bot's and leaving stale content on
+// screen for a frame) since there's no menu to show over its box.
 function startSelectionTurn() {
-  centerCameraOnActive();
   var p = store.players[store.active];
   if (p.isBot) {
+    setOverlayVisible(false);
+    centerCameraOnActive();
     var randomType = TANK_TYPES[Math.floor(Math.random() * TANK_TYPES.length)];
     chooseTankType(randomType.key);
   } else {
+    centerCameraOnActiveOffset(panelOffsetPx());
     renderTankSelectMenu();
   }
 }

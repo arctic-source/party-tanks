@@ -13,6 +13,16 @@ export function centerCameraOnActive() {
   clampCam();
 }
 
+// Same as centerCameraOnActive, but shifts the active player's box to the
+// middle of the visible strip to the right of a UI panel of width
+// offsetPx (e.g. the tank-select side panel), instead of dead-center of
+// the whole viewport where the panel would cover it.
+export function centerCameraOnActiveOffset(offsetPx) {
+  store.camCenterX = store.players[store.active].x - (offsetPx / 2) / store.camZoom;
+  store.camCenterY = defaultCamCenterY();
+  clampCam();
+}
+
 export function recenterView() {
   store.camZoom = 1;
   centerCameraOnActive();
