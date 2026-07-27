@@ -21,9 +21,27 @@ function setOverlayVisible(visible) {
   document.getElementById("bar").style.display = visible ? "none" : "";
 }
 
+// Tapping a tile only highlights it (pendingKey) - the actual pick isn't
+// applied until Confirm is pressed. This is also a second, independent
+// line of defense against the ghost-duplicate-event bug fixed earlier:
+// a stray trailing event from a tile tap can at most re-highlight the
+// same or another tile, never advance the turn on its own.
+var pendingKey = null;
+
+function markPending(key, name) {
+  pendingKey = key;
+  document.querySelectorAll("#tsTileList .tsTile").forEach(function (t) {
+    t.classList.toggle("selected", t.dataset.key === key);
+  });
+  var btn = document.getElementById("tsConfirmBtn");
+  btn.disabled = false;
+  btn.textContent = "Confirm " + name;
+}
+
 function renderTile(type, p) {
   var btn = document.createElement("button");
   btn.className = "tsTile";
+  btn.dataset.key = type.key;
 
   var canvas = document.createElement("canvas");
   canvas.className = "tsTileCanvas";
@@ -55,7 +73,7 @@ function renderTile(type, p) {
   btn.addEventListener("pointerdown", function (e) {
     e.preventDefault();
     e.stopPropagation();
-    chooseTankType(type.key);
+    markPending(type.key, type.name);
   });
   return btn;
 }
@@ -70,6 +88,11 @@ function renderTankSelectMenu() {
   TANK_TYPES.forEach(function (type) {
     list.appendChild(renderTile(type, p));
   });
+
+  pendingKey = null;
+  var confirmBtn = document.getElementById("tsConfirmBtn");
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = "Select a tank";
 
   setOverlayVisible(true);
 }
@@ -119,6 +142,13 @@ export function chooseTankType(key) {
   p.selected = true;
   p.fuel = FUEL_MAX;
   requestAnimationFrame(advanceOrFinish);
+}
+
+// Wired to the Confirm button in main.js. A tile tap only sets
+// pendingKey (see markPending); the pick itself only happens here.
+export function confirmTankSelection() {
+  if (!pendingKey) return;
+  chooseTankType(pendingKey);
 }
 
 // Bots don't need the UI - they just pick a random type immediately, same

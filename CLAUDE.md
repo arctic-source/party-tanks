@@ -161,6 +161,14 @@ These came out of real back-and-forth with the user — don't casually
   both have picked (`finishTankSelection()`) - don't move wind generation
   earlier, the whole point of gating it here is a clean single moment
   where the match visibly "starts."
+- **Tapping a tank tile only highlights it - a separate Confirm button
+  commits the pick** (`tankSelect.js: markPending()` sets `pendingKey` and
+  toggles `.selected` on the tapped tile; `confirmTankSelection()`, wired
+  to `#tsConfirmBtn` in `main.js`, is the only thing that actually calls
+  `chooseTankType()`). This was a deliberate QoL change - it also
+  incidentally hardens the ghost-duplicate-event fix below, since a stray
+  trailing event from a tile tap can now only re-highlight a tile, never
+  advance the turn by itself.
 - **Each unselected player is drawn as a supply crate, not their tank**
   (`tanks.js: drawSupplyCrate`, gated by `p.selected`). There's no separate
   reveal animation/state - `drawTank()` just stops calling

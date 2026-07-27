@@ -19,7 +19,7 @@ import { fire, resolveImpact, afterResolve } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, applyPlayerConfigToGame } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
 import { runBot } from "./bot.js";
-import { beginTankSelection } from "./tankSelect.js";
+import { beginTankSelection, confirmTankSelection } from "./tankSelect.js";
 
 // Sizes the arena around however many players are actually in the match:
 // each active player gets a fixed spacing budget (scaled by map size),
@@ -110,6 +110,10 @@ document.getElementById("roundsBackBtn").addEventListener("pointerdown", functio
 document.getElementById("startGameBtn").addEventListener("pointerdown", function (e) {
   e.preventDefault();
   beginMatchFromConfig();
+});
+document.getElementById("tsConfirmBtn").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  confirmTankSelection();
 });
 document.getElementById("windArrowLeftBtn").addEventListener("pointerdown", function (e) {
   e.preventDefault();
