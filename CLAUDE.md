@@ -26,21 +26,25 @@ js/
   terrain.js       terrain generation/query/deform + drawTerrain()
   trees.js         tree lifecycle + drawing (alive/burning/ash)
   background.js    sky gradient, parallax mountain layers, clouds
-  tanks.js         tank creation + drawing (tank/bullet/flash/impact marks)
+  tanks.js         tank type stats/art (TANK_TYPES-driven body drawers,
+                   supply-crate-until-selected, bullet/flash/impact marks)
   combat.js        fire(), resolveImpact(), tree-fire damage, turn resolution
   playerConfig.js  pre-game screens, player name/color + wind config persistence
-  ui.js            turn/fuel/aim HUD text, toasts, fullscreen button state
+  ui.js            turn/fuel/aim HUD text, per-player theming, toasts,
+                   fullscreen button state
   bot.js           medium-difficulty AI: dry-run trajectory search + aim
                    noise + move-when-unreachable turn state machine
+  tankSelect.js    in-match tank-picking phase: tile menu, bot auto-pick,
+                   wind roll + real turn start once both have picked
   main.js          orchestrator: wires up all event listeners, the
                    update/render loop, computeArenaLayout(), boot()
 ```
 
 Dependency direction is roughly: `store`/`constants`/`utils` (leaves) →
 `canvas` → `camera`/`terrain` → `trees`/`tanks`/`background` →
-`combat`/`playerConfig`/`ui` → `main` (root, imports everything, has no
-exports). Keep new code flowing in this direction — e.g. `terrain.js`
-should never import from `combat.js`.
+`combat`/`playerConfig`/`ui` → `bot`/`tankSelect` → `main` (root, imports
+everything, has no exports). Keep new code flowing in this direction —
+e.g. `terrain.js` should never import from `combat.js`.
 
 ### The store pattern
 
@@ -86,28 +90,92 @@ These came out of real back-and-forth with the user — don't casually
   pickMountainLayout`) instead of one placement rule with randomized
   parameters. This was a deliberate fix for terrain feeling "samey" —
   don't collapse it back to a single rule.
-- **Damage falls off linearly with impact distance** from `MAX_DAMAGE`
-  (dead-center) to `MIN_DAMAGE` (edge of `HIT_RADIUS`), in
-  `combat.js: resolveImpact`. This was implemented only after being reviewed
-  critically per the user's request — it's intentional, not a placeholder.
+- **Damage falls off linearly with impact distance** from a tank type's
+  own `maxDamage` (dead-center) to its own `minDamage` (edge of its hit
+  box), in `combat.js: resolveImpact`. This was implemented only after
+  being reviewed critically per the user's request — it's intentional,
+  not a placeholder. Damage dealt is an **attacker** trait: `resolveImpact`
+  reads `store.players[store.active]` (the shooter, not the tank that got
+  hit) for `minDamage`/`maxDamage`, so a Juggernaut always hits harder
+  regardless of what it hit.
 - **Bullets spawn at the barrel tip**, not a fixed offset from the tank
   body. `combat.js: fire()` computes the same pivot point + direction
-  vector (`BARREL_LENGTH`, `BARREL_PIVOT_Y` in `constants.js`) that
-  `tanks.js: drawTank()` uses to draw the barrel and the yellow aim arrow -
-  so the bullet always visibly leaves from where the arrow points, at any
-  angle. Keep the physics and the drawing reading from the same constants;
-  don't reintroduce a separate fixed offset for the spawn point.
+  vector (per-type `barrelPivotX/Y`, `barrelLength` in `constants.js:
+  TANK_TYPES`) that `tanks.js: drawTank()` uses to draw the barrel and the
+  yellow aim arrow - so the bullet always visibly leaves from where the
+  arrow points, at any angle, for any tank type. Keep the physics and the
+  drawing reading from the same per-type values; don't reintroduce a
+  separate fixed offset for the spawn point.
+- **Hit detection is an axis-aligned BOX, not a circle** (`hitHalfWidth`/
+  `hitHeight` per type in `constants.js: TANK_TYPES`; the check itself is
+  `main.js: hitTest()`). A circle has one degree of freedom (radius), which
+  can't independently match width vs height - Jumper is tall and narrow,
+  Juggernaut is wide and squat, and a circle sized to reach a tall tank's
+  feet would absurdly overshoot its narrow torso width (or vice versa).
+  The box is anchored at ground level (bottom edge at `terrainHeightAt`,
+  top edge `hitHeight` above it) and spans `±hitHalfWidth` - deliberately
+  sized to contain the tank's full visible body **including its legs**,
+  excluding only thin protrusions (barrel, Trooper's antenna) the same way
+  those were always allowed to poke slightly outside the old circle.
+  `hitTest()` returns a 0..1 "distance to the box edge" (Chebyshev-style:
+  `max(|dx|/halfWidth, |dy|/halfHeight)`) that `resolveImpact` uses for
+  the same linear damage falloff the circle model used - don't reintroduce
+  distance-from-center circle math without re-deriving why it broke down
+  for non-square silhouettes.
 - **Self-damage has a grace period** (`SELF_DAMAGE_GRACE = 0.25s`) before a
   bullet can hit its own shooter. Without it, every shot would register an
   instant self-hit at the barrel's spawn point, which sits inside the
-  shooter's own `HIT_RADIUS`. Since bullets spawn at the barrel tip (see
-  below), self-hits now happen on near-vertical shots (roughly 80°-95°) that
+  shooter's own hit box. Since bullets spawn at the barrel tip (see
+  above), self-hits happen on near-vertical shots (roughly 80°-95°) that
   go mostly straight up and fall back down near their own x - not on
   backward-arcing (angle > 90°) shots as an earlier version of this file
   said. That description was written for a since-replaced spawn-point
   formula; re-verify empirically (sweep angles with wind forced to 0, see
   Testing workflow) before trusting either description again if this code
   changes.
+- **Three tank types, one shared table** (`TANK_TYPES` in `constants.js`:
+  Trooper/Jumper/Juggernaut). Each entry is a complete stat + art-anchor
+  block (health, speed, fuel drain, damage range, hit box, barrel pivot/
+  length) - adding a fourth type is a new table entry plus a new body-
+  drawing function registered in `tanks.js: BODY_DRAWERS`, not new
+  branches through the physics/combat code. Tank body art is grey/black
+  structure with only 1-2 small accents actually carrying the player's
+  color (a stripe, a trim ring, an ID plate) - not the whole silhouette -
+  and any glass/viewport/thruster-glow element stays a fixed light blue
+  regardless of player, so the accent color is the *only* saturated color
+  and reads clearly at a glance. Body art is authored "facing right" and
+  mirrored via `ctx.scale(dir, 1)` in `tanks.js: drawTank()`; the barrel
+  is drawn *outside* that mirrored scope using dir-aware vectors directly
+  (mirroring the barrel's angle via `180 - angle` for dir=-1, not another
+  `ctx.scale`) so it's never double-flipped.
+- **Tank selection happens inside the match, not on a pre-game screen**
+  (`tankSelect.js`). `main.js: startMatch()` generates terrain/trees/wind-
+  config as before but hands off to `beginTankSelection()` instead of
+  starting the aim phase directly; `store.state` gets a new value,
+  `"select"`, gating the aim/flight/resolve branches in `main.js: update()`
+  off entirely (nothing needs to happen there - the world still renders
+  normally underneath, since `render()` isn't gated by state). Player 0
+  picks first, then player 1 (`store.active` doubles as "whose turn to
+  pick"); a bot player skips the tile UI and picks a random type
+  immediately. Wind is rolled and the real first turn begins only once
+  both have picked (`finishTankSelection()`) - don't move wind generation
+  earlier, the whole point of gating it here is a clean single moment
+  where the match visibly "starts."
+- **Each unselected player is drawn as a supply crate, not their tank**
+  (`tanks.js: drawSupplyCrate`, gated by `p.selected`). There's no separate
+  reveal animation/state - `drawTank()` just stops calling
+  `drawSupplyCrate` and starts drawing the real body the instant
+  `p.selected` flips true, so the "box becomes a tank" moment is a single
+  boolean flip, not a tween. Don't add crate→tank animation state without
+  a reason; the instant swap was a deliberate scope cut.
+- **No per-pick "Player X selected Y!" toast.** Selecting during
+  `tankSelect.js` runs entirely synchronously (pick → apply stats →
+  advance to the next player or call `finishTankSelection()`), so any
+  intermediate toast would always get overwritten before the browser ever
+  paints it - either by the next player's pick or by
+  `finishTankSelection()`'s own "Terrain: X" toast. The box→tank reveal
+  itself is the feedback for a pick; don't add per-pick toasts back
+  without also adding a real delay between picks.
 - **Trees have a 3-state lifecycle**: alive → burning (ignites on bullet
   hit, stops blocking bullets, damages nearby tanks each turn via
   `applyTreeFireDamage`) → ash (`BURN_TURNS` turns later, rendered behind
@@ -120,7 +188,9 @@ These came out of real back-and-forth with the user — don't casually
   intentional, not a bug.
 - **Wind is rolled once per round, not per shot.** (`store.wind`, a signed
   value in `[-1, 1]` — sign is direction, magnitude is strength — set by
-  `main.js: generateWind()` inside `startMatch()`.) It only affects the
+  `tankSelect.js: generateWind()`, called once both players have picked a
+  tank, not at `startMatch()` time - see the tank-selection decision
+  below for why.) It only affects the
   bullet in flight (`bullet.vx += store.wind * WIND_MAX_ACCEL * dt`, next to
   gravity's `vy` accel in `main.js: update()`), never tank movement. The
   magnitude is drawn from a band picked by the config screen's None/Light/
@@ -213,7 +283,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v5`). **Bump this version any time you change
+  (currently `party-tanks-v6`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -255,3 +325,8 @@ purpose:
   toggle, but only one difficulty exists (`AI_LEVELS.medium` in
   `constants.js`) - there's no easy/hard selector yet, though `bot.js`
   is already structured so adding one is new table entries, not new logic.
+- **Tank type choice doesn't persist** across matches the way player
+  name/color/wind level do - every match starts both players back at
+  `newTank()`'s Trooper default and re-runs the full `tankSelect.js` flow.
+  Not an oversight; nothing has asked for a "remember my tank" shortcut
+  yet, and picking is already a required, unskippable step every match.

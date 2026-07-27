@@ -1,4 +1,4 @@
-var CACHE_NAME = "party-tanks-v5";
+var CACHE_NAME = "party-tanks-v6";
 var ASSETS = [
   "./",
   "./index.html",
@@ -19,7 +19,8 @@ var ASSETS = [
   "./js/combat.js",
   "./js/playerConfig.js",
   "./js/ui.js",
-  "./js/bot.js"
+  "./js/bot.js",
+  "./js/tankSelect.js"
 ];
 
 self.addEventListener("install", function (event) {

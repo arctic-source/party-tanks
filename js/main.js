@@ -1,12 +1,11 @@
 import { store } from "./store.js";
 import {
   PLAYER_SPACING, WING_MARGIN, MAP_SIZE_MULTIPLIER,
-  GRAVITY, WIND_MAX_ACCEL, WIND_LEVELS, MOVE_SPEED, FUEL_MAX, FUEL_PER_SEC,
-  HIT_RADIUS, ANGLE_MIN, ANGLE_MAX, ANGLE_RATE, POWER_MIN, POWER_MAX, POWER_RATE,
-  TANK_HALF_H, TREE_BASE_HEIGHT, TREE_CANOPY_FRAC, TREE_RADIUS_FRAC, BURN_TURNS,
+  GRAVITY, WIND_MAX_ACCEL,
+  ANGLE_MIN, ANGLE_MAX, ANGLE_RATE, POWER_MIN, POWER_MAX, POWER_RATE,
+  TREE_BASE_HEIGHT, TREE_CANOPY_FRAC, TREE_RADIUS_FRAC, BURN_TURNS,
   SELF_DAMAGE_GRACE
 } from "./constants.js";
-import { randRange } from "./utils.js";
 import { ctx, canvasWrap, resizeCanvas } from "./canvas.js";
 import {
   centerCameraOnActive, recenterView, clampCam,
@@ -18,8 +17,9 @@ import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, applyPlayerConfigToGame } from "./playerConfig.js";
-import { updateTurnUI, updateFuelUI, updateAimUI, updateWindUI, showToast, updateFsButton } from "./ui.js";
+import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
 import { runBot } from "./bot.js";
+import { beginTankSelection } from "./tankSelect.js";
 
 // Sizes the arena around however many players are actually in the match:
 // each active player gets a fixed spacing budget (scaled by map size),
@@ -37,22 +37,10 @@ function computeArenaLayout() {
   store.playerStartXs = xs;
 }
 
-// Wind is constant for the whole round (currently the whole match, since
-// rounds are locked to 1) - rolled once here rather than per shot, from
-// the magnitude band the config screen's selected level points at.
-function generateWind() {
-  var level = WIND_LEVELS[store.windLevelIndex];
-  if (level.max <= 0) { store.wind = 0; return; }
-  var mag = randRange(level.min, level.max);
-  store.wind = Math.random() < 0.5 ? -mag : mag;
-}
-
 function startMatch() {
   computeArenaLayout();
   generateTerrain();
   store.players = [newTank(0), newTank(1)];
-  store.active = 0;
-  store.state = "aim";
   store.bullet = null;
   store.impactFlash = null;
   store.lastImpact = [null, null];
@@ -61,18 +49,16 @@ function startMatch() {
   generateTrees([store.players[0].x, store.players[1].x]);
   generateBgTrees();
   generateClouds();
-  generateWind();
-  updateWindUI();
   store.held.left = false;
   store.held.right = false;
   store.bot.active = false;
   store.bot.phase = null;
   store.bot.waitTimer = 0;
   store.camZoom = 1;
-  centerCameraOnActive();
-  updateTurnUI();
-  showToast("Terrain: " + store.currentLayoutName);
   document.getElementById("overlay").classList.remove("show");
+  // Wind/turn-start toast/camera-centering happen once both players have
+  // picked a tank - see tankSelect.js: finishTankSelection().
+  beginTankSelection();
 }
 
 // ---------- Input: buttons (press-and-hold) ----------
@@ -156,6 +142,20 @@ canvasWrap.addEventListener("pointermove", onPointerMove);
 canvasWrap.addEventListener("pointerup", onPointerUp);
 canvasWrap.addEventListener("pointercancel", onPointerUp);
 
+// Axis-aligned hit BOX anchored at ground level (see CLAUDE.md - a circle
+// can't independently match width vs height, and our three tank types
+// have very different aspect ratios). Returns a 0..1 "how close to
+// center" value for damage falloff (0 = dead center, 1 = right at the
+// box edge), or null if the bullet is outside the box entirely.
+function hitTest(bullet, tank) {
+  var dx = bullet.x - tank.x;
+  var halfH = tank.hitHeight / 2;
+  var centerY = terrainHeightAt(tank.x) - halfH;
+  var dy = bullet.y - centerY;
+  if (Math.abs(dx) > tank.hitHalfWidth || Math.abs(dy) > halfH) return null;
+  return Math.max(Math.abs(dx) / tank.hitHalfWidth, Math.abs(dy) / halfH);
+}
+
 // ---------- Update loop ----------
 function update(dt) {
   if (store.state === "aim") {
@@ -179,10 +179,10 @@ function update(dt) {
       if (store.held.left) mv -= 1;
       if (store.held.right) mv += 1;
       if (mv !== 0) {
-        var dist = MOVE_SPEED * dt;
+        var dist = p.moveSpeed * dt;
         p.x += mv * dist;
         p.x = Math.max(10, Math.min(store.WORLD_W - 10, p.x));
-        p.fuel = Math.max(0, p.fuel - FUEL_PER_SEC * dt);
+        p.fuel = Math.max(0, p.fuel - p.fuelPerSec * dt);
         // Auto-follow horizontally while driving so the tank never drifts
         // out of view; vertical framing/zoom stay untouched.
         store.camCenterX = p.x;
@@ -206,19 +206,12 @@ function update(dt) {
 
     var shooter = store.players[store.active];
     var defender = store.players[1 - store.active];
-    var dx = bullet.x - defender.x;
-    var dy = bullet.y - (terrainHeightAt(defender.x) - TANK_HALF_H);
-    var dist2 = dx * dx + dy * dy;
 
     // Self-damage only arms after a brief grace period so the bullet
     // clears its own barrel first - otherwise every shot would trigger
     // an instant self-hit at the spawn point right next to the tank.
-    var selfDist2 = null;
-    if (bullet.elapsed >= SELF_DAMAGE_GRACE) {
-      var sdx = bullet.x - shooter.x;
-      var sdy = bullet.y - (terrainHeightAt(shooter.x) - TANK_HALF_H);
-      selfDist2 = sdx * sdx + sdy * sdy;
-    }
+    var selfT = bullet.elapsed >= SELF_DAMAGE_GRACE ? hitTest(bullet, shooter) : null;
+    var defT = hitTest(bullet, defender);
 
     var hitTree = null;
     for (var ti = 0; ti < store.trees.length; ti++) {
@@ -237,10 +230,10 @@ function update(dt) {
       resolveImpact(bullet.x, bullet.y, null);
     } else if (bullet.x < 0 || bullet.x > store.WORLD_W) {
       resolveImpact(bullet.x, bullet.y, null);
-    } else if (selfDist2 !== null && selfDist2 <= HIT_RADIUS * HIT_RADIUS) {
-      resolveImpact(bullet.x, bullet.y, shooter, Math.sqrt(selfDist2));
-    } else if (dist2 <= HIT_RADIUS * HIT_RADIUS) {
-      resolveImpact(bullet.x, bullet.y, defender, Math.sqrt(dist2));
+    } else if (selfT !== null) {
+      resolveImpact(bullet.x, bullet.y, shooter, selfT);
+    } else if (defT !== null) {
+      resolveImpact(bullet.x, bullet.y, defender, defT);
     } else if (bullet.y >= terrainHeightAt(bullet.x)) {
       resolveImpact(bullet.x, terrainHeightAt(bullet.x), null);
     }

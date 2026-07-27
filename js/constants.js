@@ -15,13 +15,7 @@ export var WIND_LEVELS = [
   { name: "Strong", min: 0.5, max: 1.0 }
 ];
 export var WIND_LEVEL_KEY = "partytanks.windLevel.v1";
-export var MOVE_SPEED = 130; // px/s
-export var FUEL_MAX = 100;
-export var FUEL_PER_SEC = 22;
-export var HEALTH_MAX = 100;
-export var HIT_RADIUS = 26;
-export var MIN_DAMAGE = 30; // grazing hit near the edge of HIT_RADIUS
-export var MAX_DAMAGE = 70; // dead-center hit
+export var FUEL_MAX = 100; // shared by all tank types; only drain RATE varies per type
 export var SELF_DAMAGE_GRACE = 0.25; // seconds before a bullet can hit its own shooter
 export var CRATER_RADIUS = 18; // world px
 export var CRATER_DEPTH = 0.05; // fraction of VIEW_H
@@ -32,10 +26,73 @@ export var POWER_MIN = 15, POWER_MAX = 100;
 export var POWER_RATE = 45; // units/sec while held
 export var POWER_TO_SPEED = 7.2; // maps power units -> initial bullet speed px/s
 
-export var TANK_HALF_W = 20, TANK_HALF_H = 12;
-export var BARREL_LENGTH = 26; // px, at scale 1 - shared by drawing and bullet spawn point
-export var BARREL_PIVOT_Y = 4; // px above the tank's local origin where the barrel pivots
 export var ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
+
+// ---------- Tank types ----------
+// Each entry is a complete stat + art-anchor block for one selectable tank.
+// hitHalfWidth/hitHeight define an axis-aligned hit BOX anchored at ground
+// level (not a circle - see CLAUDE.md's load-bearing decisions for why).
+// barrelPivotX/Y is the barrel's pivot point in the tank's own "facing
+// right" local frame (mirrored via dir when actually drawn/fired), and
+// barrelLength/barrelWidth/collar/muzzle drive both the drawn barrel and
+// the bullet spawn point identically, same principle as the old shared
+// BARREL_LENGTH/BARREL_PIVOT_Y constants, just per type now.
+export var TANK_TYPES = [
+  {
+    key: "trooper",
+    name: "Trooper",
+    blurb: "Balanced all-rounder.",
+    healthMax: 100,
+    moveSpeed: 130,
+    fuelPerSec: 22,
+    minDamage: 30,
+    maxDamage: 70,
+    hitHalfWidth: 24,
+    hitHeight: 28,
+    barrelPivotX: -2,
+    barrelPivotY: 24,
+    barrelLength: 23,
+    barrelWidth: 3.2,
+    collar: true,
+    muzzle: false
+  },
+  {
+    key: "jumper",
+    name: "Jumper",
+    blurb: "Fast & evasive, fragile.",
+    healthMax: 80,
+    moveSpeed: 160,
+    fuelPerSec: 18,
+    minDamage: 30,
+    maxDamage: 70,
+    hitHalfWidth: 17,
+    hitHeight: 56,
+    barrelPivotX: 9,
+    barrelPivotY: 45,
+    barrelLength: 16,
+    barrelWidth: 2.4,
+    collar: false,
+    muzzle: false
+  },
+  {
+    key: "juggernaut",
+    name: "Juggernaut",
+    blurb: "Slow & big, hits hard.",
+    healthMax: 100,
+    moveSpeed: 100,
+    fuelPerSec: 26,
+    minDamage: 40,
+    maxDamage: 85,
+    hitHalfWidth: 26,
+    hitHeight: 33,
+    barrelPivotX: -7,
+    barrelPivotY: 29,
+    barrelLength: 26,
+    barrelWidth: 4.6,
+    collar: true,
+    muzzle: true
+  }
+];
 
 export var TREE_BASE_HEIGHT = 40; // px at scale 1
 export var TREE_CANOPY_FRAC = 0.52; // fraction of height above ground used as hit-circle center

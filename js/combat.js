@@ -1,7 +1,6 @@
 import { store } from "./store.js";
 import {
-  TANK_HALF_H, POWER_TO_SPEED, BARREL_LENGTH, BARREL_PIVOT_Y, HIT_RADIUS, MIN_DAMAGE, MAX_DAMAGE,
-  CRATER_RADIUS, CRATER_DEPTH, TREE_FIRE_RADIUS, TREE_FIRE_DAMAGE, FUEL_MAX
+  POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, TREE_FIRE_RADIUS, TREE_FIRE_DAMAGE, FUEL_MAX
 } from "./constants.js";
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive } from "./camera.js";
@@ -10,7 +9,8 @@ import { updateTurnUI, showToast } from "./ui.js";
 // Spawns at the barrel tip rather than a fixed offset from the tank body,
 // using the same pivot point + direction vector drawTank() draws the
 // barrel/aim arrow with - so the bullet always visibly leaves from where
-// the yellow arrow points, at any angle.
+// the yellow arrow points, at any angle. Pivot/length are per-tank-type
+// now (constants.js: TANK_TYPES), not shared globals.
 export function fire() {
   if (store.state !== "aim") return;
   var p = store.players[store.active];
@@ -19,10 +19,11 @@ export function fire() {
   var bx = Math.cos(rad) * dir;
   var by = -Math.sin(rad);
   var speed = p.power * POWER_TO_SPEED;
-  var pivotY = terrainHeightAt(p.x) - TANK_HALF_H - BARREL_PIVOT_Y;
+  var pivotX = p.x + p.barrelPivotX * dir;
+  var pivotY = terrainHeightAt(p.x) - p.barrelPivotY;
   store.bullet = {
-    x: p.x + bx * BARREL_LENGTH,
-    y: pivotY + by * BARREL_LENGTH,
+    x: pivotX + bx * p.barrelLength,
+    y: pivotY + by * p.barrelLength,
     vx: bx * speed,
     vy: by * speed,
     elapsed: 0
@@ -30,13 +31,19 @@ export function fire() {
   store.state = "flight";
 }
 
-export function resolveImpact(x, y, hitTank, hitDist) {
+// t is a box-normalized 0..1 distance from the hit tank's own center to
+// its box edge (0 = dead center, 1 = right at the edge) - computed by the
+// caller via main.js's hitTest(), since it depends on that tank's own
+// hitHalfWidth/hitHeight. Damage dealt uses the SHOOTER's own min/max
+// damage (an attacker trait), not the defender's.
+export function resolveImpact(x, y, hitTank, t) {
   var dmg = null;
   if (hitTank) {
-    var t = Math.max(0, Math.min(1, (hitDist || 0) / HIT_RADIUS));
-    dmg = Math.round(MAX_DAMAGE - (MAX_DAMAGE - MIN_DAMAGE) * t);
+    var shooter = store.players[store.active];
+    var tt = Math.max(0, Math.min(1, t || 0));
+    dmg = Math.round(shooter.maxDamage - (shooter.maxDamage - shooter.minDamage) * tt);
     hitTank.health = Math.max(0, hitTank.health - dmg);
-    if (hitTank === store.players[store.active]) {
+    if (hitTank === shooter) {
       showToast("💥 " + hitTank.name + " caught themselves in the blast for " + dmg + " damage!");
     }
   }

@@ -2,16 +2,22 @@ import { store } from "./store.js";
 import { FUEL_MAX, POWER_MAX } from "./constants.js";
 import { hexToRgb, mixHex } from "./utils.js";
 
+// Sets the --accent/--accent-bg/--accent-glow CSS vars on #app, so both
+// #bar and any full-screen overlay (e.g. the tank-select menu) inherit
+// the same per-player theming from one place.
+export function applyPlayerTheme(p) {
+  var app = document.getElementById("app");
+  var rgb = hexToRgb(p.color);
+  app.style.setProperty("--accent", p.color);
+  app.style.setProperty("--accent-bg", mixHex(p.color, "#1b1f27", 0.72));
+  app.style.setProperty("--accent-glow", "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",.45)");
+}
+
 export function updateTurnUI() {
   var p = store.players[store.active];
   document.getElementById("turnLabel").textContent = p.name + "'s Turn";
   document.getElementById("turnLabel").style.color = p.color;
-
-  var bar = document.getElementById("bar");
-  var rgb = hexToRgb(p.color);
-  bar.style.setProperty("--accent", p.color);
-  bar.style.setProperty("--accent-bg", mixHex(p.color, "#1b1f27", 0.72));
-  bar.style.setProperty("--accent-glow", "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",.45)");
+  applyPlayerTheme(p);
 }
 
 export function updateFuelUI() {
