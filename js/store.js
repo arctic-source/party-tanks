@@ -67,7 +67,7 @@ export var store = {
   pinchAnchorWorldY: 0,
 
   // Press-and-hold control state, keyed by control name (left/right/
-  // angleUp/angleDown/powerUp/powerDown).
+  // angleLeft/angleRight/powerUp/powerDown).
   held: {},
 
   // Player setup (persisted names/colors + the config actually applied

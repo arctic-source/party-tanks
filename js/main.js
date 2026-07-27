@@ -74,8 +74,8 @@ function bindHold(id, key) {
 }
 bindHold("btnLeft", "left");
 bindHold("btnRight", "right");
-bindHold("btnAngleUp", "angleUp");
-bindHold("btnAngleDown", "angleDown");
+bindHold("btnAngleLeft", "angleLeft");
+bindHold("btnAngleRight", "angleRight");
 bindHold("btnPowerUp", "powerUp");
 bindHold("btnPowerDown", "powerDown");
 
@@ -168,8 +168,22 @@ function update(dt) {
     if (p.isBot) {
       runBot(dt);
     } else {
-      if (store.held.angleUp) p.angle = Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt);
-      if (store.held.angleDown) p.angle = Math.max(ANGLE_MIN, p.angle - ANGLE_RATE * dt);
+      // Buttons are screen-relative (Left/Right tilt the barrel tip
+      // toward that side of the screen), not angle-relative (Up/Down
+      // rotating clockwise vs anticlockwise depending on which way the
+      // tank happens to face) - the old Up/Down labels meant opposite
+      // rotation directions for player 0 vs player 1, which is exactly
+      // what made them confusing. p.angle's 0..180 sweep already goes
+      // from "barrel tip toward dir" through straight up to "away from
+      // dir" (see combat.js: fire()'s bx = cos(angle) * dir), so
+      // reaching screen-right consistently means increasing angle when
+      // dir is -1 and decreasing it when dir is 1 - i.e. scaling the
+      // delta by dir flips which button increases/decreases p.angle per
+      // player, so both players' Right button always visibly tilts the
+      // barrel rightward.
+      var dir = p.idx === 0 ? 1 : -1;
+      if (store.held.angleRight) p.angle = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, p.angle - ANGLE_RATE * dt * dir));
+      if (store.held.angleLeft) p.angle = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt * dir));
       if (store.held.powerUp) p.power = Math.min(POWER_MAX, p.power + POWER_RATE * dt);
       if (store.held.powerDown) p.power = Math.max(POWER_MIN, p.power - POWER_RATE * dt);
     }

@@ -148,6 +148,21 @@ These came out of real back-and-forth with the user — don't casually
   is drawn *outside* that mirrored scope using dir-aware vectors directly
   (mirroring the barrel's angle via `180 - angle` for dir=-1, not another
   `ctx.scale`) so it's never double-flipped.
+- **The angle buttons are screen-relative (Left/Right), not
+  angle-relative (Up/Down).** (`main.js: update()`'s aim-phase branch.)
+  A flat `p.angle += ANGLE_RATE * dt` for one button and `-=` for the
+  other would rotate the barrel *clockwise for one player and
+  anticlockwise for the other*, since `combat.js: fire()`'s `bx =
+  cos(angle) * dir` already mirrors which screen-direction a given angle
+  points for `dir = -1` - that mismatch between "which button" and
+  "which way it visibly spins" was the actual bug report, not just a
+  labeling issue. The fix scales the delta by the same `dir` used
+  everywhere else (`p.angle -= ANGLE_RATE * dt * dir` for Right, `+=` for
+  Left) so Right always visibly tilts the barrel tip toward screen-right
+  for both players, matching how the Move Left/Right buttons already
+  work in screen space. Don't revert to a flat, dir-independent delta
+  without re-deriving why that reintroduces the mirrored-rotation
+  confusion.
 - **Tank selection happens inside the match, not on a pre-game screen**
   (`tankSelect.js`). `main.js: startMatch()` generates terrain/trees/wind-
   config as before but hands off to `beginTankSelection()` instead of
@@ -368,7 +383,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v9`). **Bump this version any time you change
+  (currently `party-tanks-v10`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
