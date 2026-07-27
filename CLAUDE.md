@@ -196,14 +196,26 @@ These came out of real back-and-forth with the user — don't casually
   `p.selected` flips true, so the "box becomes a tank" moment is a single
   boolean flip, not a tween. Don't add crate→tank animation state without
   a reason; the instant swap was a deliberate scope cut.
-- **No per-pick "Player X selected Y!" toast.** Selecting during
-  `tankSelect.js` runs entirely synchronously (pick → apply stats →
-  advance to the next player or call `finishTankSelection()`), so any
-  intermediate toast would always get overwritten before the browser ever
-  paints it - either by the next player's pick or by
-  `finishTankSelection()`'s own "Terrain: X" toast. The box→tank reveal
-  itself is the feedback for a pick; don't add per-pick toasts back
-  without also adding a real delay between picks.
+- **Picking a tank holds the reveal on screen before advancing** -
+  `tankSelect.js: chooseTankType()` still applies the stats and flips
+  `p.selected` immediately (the crate→tank swap itself isn't delayed),
+  but `advanceOrFinish()` - which moves to the next player or calls
+  `finishTankSelection()` - is deferred via `setTimeout(...,
+  TANK_SELECT_REVEAL_DELAY_MS)` (`constants.js`) instead of running
+  inline. This is deliberate: without a real pause, the camera pan to the
+  next player happened in the same tick as the reveal and nobody actually
+  saw the box turn into a tank. The panel's tiles/Confirm button are
+  disabled and relabeled ("<Tank> deployed!") for the same window
+  (`lockSelectionUI()`) purely so a stray tap during the pause can't look
+  like it did something - `p.selected` was already the real guard against
+  a double-pick. Bots get an equivalent beat: `startSelectionTurn()`
+  centers the camera on a bot's box first, waits
+  `TANK_SELECT_BOT_LOOK_MS`, *then* calls `chooseTankType()` with a random
+  type, so a bot's box is visibly on screen before it becomes a tank too,
+  not just a human's. Still no separate "Player X selected Y!" `#toast` -
+  the reveal + button relabel are the feedback; a toast would just add a
+  second, redundant message on top of what's already on screen during the
+  same pause.
 - **Trees have a 3-state lifecycle**: alive → burning (ignites on bullet
   hit, stops blocking bullets, damages nearby tanks each turn via
   `applyTreeFireDamage`) → ash (`BURN_TURNS` turns later, rendered behind
@@ -311,7 +323,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v7`). **Bump this version any time you change
+  (currently `party-tanks-v8`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { TANK_TYPES, WIND_LEVELS, FUEL_MAX } from "./constants.js";
+import { TANK_TYPES, WIND_LEVELS, FUEL_MAX, TANK_SELECT_BOT_LOOK_MS, TANK_SELECT_REVEAL_DELAY_MS } from "./constants.js";
 import { randRange } from "./utils.js";
 import { centerCameraOnActive, centerCameraOnActiveOffset } from "./camera.js";
 import { applyTankType, drawTankPreview } from "./tanks.js";
@@ -16,9 +16,18 @@ function generateWind() {
   store.wind = Math.random() < 0.5 ? -mag : mag;
 }
 
-function setOverlayVisible(visible) {
+// The top #bar (aim/fire controls) has nothing to do during any part of
+// tank selection - not just while the panel itself is up - so it's
+// hidden once for the whole "select" state (beginTankSelection) and
+// restored once at the very end (finishTankSelection), rather than
+// toggling with the panel. A bot's turn hides the panel but has no aim
+// controls to show in its place; toggling the bar there too used to be
+// harmless only because it lasted under a frame - now that bot turns
+// have a real look-then-reveal pause (see chooseTankType/
+// startSelectionTurn), leaving the bar tied to the panel would flash
+// the stale aim-phase bar for that whole pause.
+function setPanelVisible(visible) {
   document.getElementById("tankSelectOverlay").classList.toggle("show", visible);
-  document.getElementById("bar").style.display = visible ? "none" : "";
 }
 
 // The panel's CSS width is fixed regardless of its slide transform, so
@@ -85,6 +94,23 @@ function renderTile(type, p) {
   return btn;
 }
 
+function findTypeByKey(key) {
+  var found = null;
+  TANK_TYPES.forEach(function (t) { if (t.key === key) found = t; });
+  return found;
+}
+
+// Freezes the panel's tiles/button right after a pick, for the duration
+// of the reveal pause - the pick is already committed (p.selected is
+// true by the time this runs), so this is purely to stop a stray tap
+// during the pause from looking like it does something.
+function lockSelectionUI(type) {
+  document.querySelectorAll("#tsTileList .tsTile").forEach(function (t) { t.disabled = true; });
+  var btn = document.getElementById("tsConfirmBtn");
+  btn.disabled = true;
+  btn.textContent = type.name + " deployed!";
+}
+
 function renderTankSelectMenu() {
   var p = store.players[store.active];
   applyPlayerTheme(p);
@@ -101,11 +127,12 @@ function renderTankSelectMenu() {
   confirmBtn.disabled = true;
   confirmBtn.textContent = "Select a tank";
 
-  setOverlayVisible(true);
+  setPanelVisible(true);
 }
 
 function finishTankSelection() {
-  setOverlayVisible(false);
+  setPanelVisible(false);
+  document.getElementById("bar").style.display = "";
   generateWind();
   updateWindUI();
   store.active = 0;
@@ -124,31 +151,30 @@ function advanceOrFinish() {
   }
 }
 
-// No "Player X selected Y!" toast here - whichever pick is last in the
-// sequence always runs synchronously into either the next player's turn
-// or finishTankSelection()'s own toast, so it would just get clobbered
-// before ever painting. The box->tank reveal itself is the feedback; both
-// tanks become visible together the moment the overlay finally closes.
-//
-// advanceOrFinish() is deferred by one frame rather than called inline -
-// a single physical tap on a touch device can dispatch more than one
-// pointer event (pointerdown, then a trailing pointerup/synthetic click),
-// and advanceOrFinish() replaces the tapped tile's entire DOM subtree
+// The box->tank reveal is the feedback for a pick, so advanceOrFinish()
+// is held off for TANK_SELECT_REVEAL_DELAY_MS - long enough to actually
+// see the swap - before panning away to the next player or finishing.
+// This also doubles as the fix for a real reported bug: a single
+// physical tap on a touch device can dispatch more than one pointer
+// event (pointerdown, then a trailing pointerup/synthetic click), and
+// advanceOrFinish() replaces the tapped tile's entire DOM subtree
 // (rendering the next player's list at the same on-screen position). A
 // stray trailing event from the same tap landing on that freshly-drawn
-// list, before the browser has finished this tap's event sequence, was
-// exactly the bug reported: it read the now-advanced store.active and
-// applied a second, unintended pick to the other player, who never saw
-// their own screen. The p.selected guard below is the real backstop -
-// deferring just keeps the DOM stable long enough for a same-tap ghost
-// event to resolve against the tile that's still there, not a new one.
+// list, before the browser had finished the tap's event sequence, used
+// to read the now-advanced store.active and apply a second, unintended
+// pick to the other player, who never saw their own screen. The
+// p.selected guard below is the real backstop - the delay (formerly a
+// single deferred frame, now a much longer deliberate pause) just keeps
+// the DOM stable long enough for a same-tap ghost event to resolve
+// against the tile that's still there, not a new one.
 export function chooseTankType(key) {
   var p = store.players[store.active];
   if (p.selected) return;
   applyTankType(p, key);
   p.selected = true;
   p.fuel = FUEL_MAX;
-  requestAnimationFrame(advanceOrFinish);
+  lockSelectionUI(findTypeByKey(key));
+  setTimeout(advanceOrFinish, TANK_SELECT_REVEAL_DELAY_MS);
 }
 
 // Wired to the Confirm button in main.js. A tile tap only sets
@@ -158,18 +184,24 @@ export function confirmTankSelection() {
   chooseTankType(pendingKey);
 }
 
-// Bots don't need the UI - they just pick a random type immediately, same
-// visible "box becomes tank" reveal a human's pick would trigger. The
-// panel is slid away for a bot's turn (defensive: guards against a human
-// turn immediately preceding a bot's and leaving stale content on
-// screen for a frame) since there's no menu to show over its box.
+// Bots don't need the UI, but they get the same "camera shows the box,
+// then it becomes a tank" beat a human gets while picking - the camera
+// centers on the bot's box first, and only after TANK_SELECT_BOT_LOOK_MS
+// (giving the viewer a moment to register whose turn it is) does the
+// bot actually pick, which triggers the same reveal + post-reveal pause
+// as a human's chooseTankType() call. The panel is slid away for a
+// bot's turn (defensive: guards against a human turn immediately
+// preceding a bot's and leaving stale content on screen for a frame)
+// since there's no menu to show over its box.
 function startSelectionTurn() {
   var p = store.players[store.active];
   if (p.isBot) {
-    setOverlayVisible(false);
+    setPanelVisible(false);
     centerCameraOnActive();
-    var randomType = TANK_TYPES[Math.floor(Math.random() * TANK_TYPES.length)];
-    chooseTankType(randomType.key);
+    setTimeout(function () {
+      var randomType = TANK_TYPES[Math.floor(Math.random() * TANK_TYPES.length)];
+      chooseTankType(randomType.key);
+    }, TANK_SELECT_BOT_LOOK_MS);
   } else {
     centerCameraOnActiveOffset(panelOffsetPx());
     renderTankSelectMenu();
@@ -179,6 +211,7 @@ function startSelectionTurn() {
 export function beginTankSelection() {
   store.state = "select";
   store.active = 0;
+  document.getElementById("bar").style.display = "none";
   store.players.forEach(function (p) { p.selected = false; });
   startSelectionTurn();
 }
