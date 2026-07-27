@@ -46,7 +46,8 @@ export var store = {
   bot: {
     active: false, // true for the whole duration of the bot's turn (any phase)
     phase: null, // null | "moving" | "waiting"
-    waitTimer: 0 // seconds left in the "waiting" (thinking) phase before firing
+    waitTimer: 0, // seconds left in the "waiting" (thinking) phase before firing
+    moveTimer: null // seconds left in a distance-capped "moving" phase (evasive move); null = no cap, just fuel-gated (reachability drive)
   },
 
   // Camera: camCenterX/Y is the world point shown at the center of the

@@ -53,6 +53,8 @@ export function newTank(idx) {
     color: cfg.color,
     colorDark: cfg.colorDark,
     isBot: !!cfg.isBot,
+    aiLevel: cfg.aiLevel === "hard" ? "hard" : "medium",
+    aiMemory: { hasFired: false, lastOpponentX: null },
     alive: true,
     selected: false
   };

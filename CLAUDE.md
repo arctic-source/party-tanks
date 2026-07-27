@@ -244,37 +244,82 @@ These came out of real back-and-forth with the user — don't casually
   → `simulateLanding`, a dry-run copy of the real flight physics that never
   touches `store.bullet`) to find the angle/power whose simulated landing
   spot is closest to a target x. To miss on purpose, it perturbs that
-  target x with one Gaussian (`AI_LEVELS.medium.aimStdDev`) *before*
-  searching, rather than adding two separately-tuned angle and power noise
-  terms after. This was a deliberate simplification: a fixed angle-space
-  error produces wildly different miss distances depending on range (tiny
-  angle error + max range = huge miss; same error at point-blank barely
-  moves the landing spot), while target-point noise gives a consistent,
-  easy-to-tune miss radius regardless of range. Don't reintroduce
-  angle/power-space noise without re-deriving that tradeoff.
-- **The bot has no memory between shots.** Every turn re-runs the search
-  from scratch against a freshly-rolled perturbed target — no bracketing/
-  walking-in behavior, intentionally, to keep it stateless and simple.
-  This was an explicit scope cut for the first (medium-only) difficulty
-  level; don't add cross-turn aim correction without discussing it first,
-  since easy/hard tiers may want to build on this differently.
-- **The bot only moves when the true target is unreachable at max
-  effort** (`AI_UNREACHABLE_THRESHOLD` in `constants.js`), and when it
-  does, it commits to one uninterrupted drive using the exact same
-  held-key + fuel mechanics a human uses, for the rest of the turn's fuel,
-  with no re-checking mid-drive — then re-aims exactly once from the new
-  position. This was a deliberate simplification over an earlier
-  iterative "move a bit, recheck, repeat" design: a single commit avoids
-  a multi-attempt retry loop entirely while still producing the visible
-  "bot drives closer when it has to" behavior. `main.js: update()` gates
-  the shared movement code with `!p.isBot || store.bot.phase ===
-  "moving"` specifically so a stray held-key state can't reposition the
-  bot's tank during its post-aim "waiting to fire" pause.
-- **Bot difficulty is one shared table, not per-level code paths.**
-  (`AI_LEVELS` in `constants.js`, currently only the `medium` entry.)
-  Easy/hard should be added as new entries with different `aimStdDev`/
-  `thinkDelay*` values, not new branches in `bot.js` - the search and
-  move-when-unreachable logic aren't difficulty-specific.
+  target x with one Gaussian *before* searching, rather than adding two
+  separately-tuned angle and power noise terms after. This was a
+  deliberate simplification: a fixed angle-space error produces wildly
+  different miss distances depending on range (tiny angle error + max
+  range = huge miss; same error at point-blank barely moves the landing
+  spot), while target-point noise gives a consistent, easy-to-tune miss
+  radius regardless of range. Don't reintroduce angle/power-space noise
+  without re-deriving that tradeoff.
+- **The Gaussian's stddev is itself computed per shot, not a flat
+  constant** (`bot.js: computeAimStdDev()`), from two multipliers against
+  the `AI_LEVELS[level].aimStdDev` ceiling: how close the shooter is to
+  the opponent right now (`rangeNearPx`/`rangeFarPx`/
+  `rangeNoiseFloorMult` - closer shots get a tighter floor), and how much
+  the opponent has moved since *this shooter's own* last shot
+  (`recalibrateDistPx`/`confidenceNoiseFloorMult` - an unmoved opponent
+  gets a tighter floor too, fully reset back to the ceiling once they've
+  moved past `recalibrateDistPx`). Both are pure multipliers on the same
+  ceiling, so this is still one Gaussian on one target point - it hasn't
+  grown a second noise mechanism, just a smarter derivation of the one
+  stddev that feeds it. Important nuance if you touch this: `simulateLanding`
+  already reads the real `store.wind` and the opponent's exact current
+  `x`, so the bot isn't actually uncertain about either - this dial is a
+  difficulty/game-feel choice ("reward the human for keeping the bot
+  guessing"), not a simulation of the bot learning something true about
+  the world. Don't describe it as the bot "learning wind" in comments;
+  it already knows the wind exactly.
+- **The bot has one shot of memory, not zero and not more.**
+  (`p.aiMemory = { hasFired, lastOpponentX }`, set in `tanks.js: newTank()`
+  and updated at the end of `bot.js: beginAimAndWait()`.) It's *only* the
+  opponent's x at this shooter's last shot - enough to compute the
+  confidence multiplier above, nothing else. A shooter's first shot of
+  the match has `hasFired: false`, so confidence starts unearned (full
+  noise) - the "first shot is exploratory" feel falls out of that for
+  free, no special-casing needed. There's still no bracketing/walking-in
+  of the actual aim point itself, and still no memory of anything before
+  the immediately preceding shot - keep it that way; a longer history is
+  a bigger change than "one more shot of context" and should be its own
+  discussion.
+- **The bot moves for two different reasons, both driven by the same
+  single-commit held-key + fuel mechanic a human uses** (no re-checking
+  mid-drive, one re-aim after). The original reason - can't reach the
+  true target at max effort (`AI_UNREACHABLE_THRESHOLD`) - drives toward
+  the opponent for the rest of the turn's fuel, fuel-gated only
+  (`store.bot.moveTimer = null`). The newer reason - the opponent's last
+  shot (`store.lastImpact[opp.idx]`) landed within `evadeTriggerDistPx`,
+  checked and rolled (`evadeChance`) *before* the reachability check in
+  `startBotTurn()` - flees away from that impact point for a *sampled
+  distance*, not until fuel runs out: `dist = lerp(evadeDistMin,
+  evadeDistMax, Math.random()²)`. Squaring a uniform sample biases it
+  toward `evadeDistMin` with an occasional roll toward `evadeDistMax` -
+  "usually a bit, sometimes a lot more," not a flat or symmetric spread.
+  That distance is converted to a duration via the mover's own
+  `moveSpeed` and stored in `store.bot.moveTimer`; `runBot()` ends the
+  "moving" phase on fuel-empty OR timer-expired, whichever comes first -
+  one phase, one optional field, not two state machines. `main.js:
+  update()` gates the shared movement code with `!p.isBot ||
+  store.bot.phase === "moving"` specifically so a stray held-key state
+  can't reposition the bot's tank during its post-aim "waiting to fire"
+  pause.
+- **Bot difficulty is one shared table, not per-level code paths -
+  including the new adaptive behavior above.** (`AI_LEVELS` in
+  `constants.js`: `medium` and `hard`.) Every knob introduced by the
+  range/confidence/evade mechanics is a multiplier or a chance, and
+  `hard` is tuned so all of them are no-ops
+  (`rangeNoiseFloorMult`/`confidenceNoiseFloorMult` at `1`,
+  `evadeChance` at `0`) - which makes `hard` collapse to exactly the
+  original flat-Gaussian, move-only-when-unreachable bot, expressed as
+  data rather than a second code path. `bot.js` never checks which level
+  it's running; only the table values differ. Each active player slot
+  picks its own level via `playerConfig.js` (a `Medium`/`Hard` toggle
+  shown only when that slot is set to Bot) - `p.aiLevel` lives on the
+  player object like `p.isBot`, read once in `tanks.js: newTank()` from
+  `store.gameConfig.players[idx].aiLevel`. Like the Player/Bot mode
+  toggle it sits next to, the difficulty choice does **not** persist
+  across a page reload (only name/color do) - that's intentional, not a
+  gap to fix, matching the existing mode toggle's behavior.
 
 ## Conventions
 
@@ -323,7 +368,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v8`). **Bump this version any time you change
+  (currently `party-tanks-v9`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -361,10 +406,10 @@ purpose:
   `computeArenaLayout()` already reads this constant so wiring one up is
   mostly a UI task.
 - **Bot/AI opponents**: player slots 3-7 are still visibly present but
-  disabled (no >2-player support yet). Slots 0-1 now support a real Bot
-  toggle, but only one difficulty exists (`AI_LEVELS.medium` in
-  `constants.js`) - there's no easy/hard selector yet, though `bot.js`
-  is already structured so adding one is new table entries, not new logic.
+  disabled (no >2-player support yet). Slots 0-1 support a real Bot
+  toggle plus a Medium/Hard difficulty toggle (`AI_LEVELS` in
+  `constants.js`) - see the load-bearing decisions above for how the two
+  levels differ and why adding a third is still just a new table entry.
 - **Tank type choice doesn't persist** across matches the way player
   name/color/wind level do - every match starts both players back at
   `newTank()`'s Trooper default and re-runs the full `tankSelect.js` flow.

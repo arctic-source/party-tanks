@@ -29,6 +29,8 @@ export function mixHex(hexA, hexB, t) {
   return "rgb(" + r + "," + g + "," + bl + ")";
 }
 
+export function lerp(a, b, t) { return a + (b - a) * t; }
+
 export function lerpColor(a, b, t) {
   return [
     Math.round(a[0] + (b[0] - a[0]) * t),

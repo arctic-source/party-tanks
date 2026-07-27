@@ -54,6 +54,7 @@ function startMatch() {
   store.bot.active = false;
   store.bot.phase = null;
   store.bot.waitTimer = 0;
+  store.bot.moveTimer = null;
   store.camZoom = 1;
   document.getElementById("overlay").classList.remove("show");
   // Wind/turn-start toast/camera-centering happen once both players have

@@ -130,12 +130,43 @@ export var AI_COARSE_POWER_STEPS = 15;
 export var AI_REFINE_STEPS = 10; // per-axis resolution of the refine pass around the coarse best
 export var AI_UNREACHABLE_THRESHOLD = 120; // px - beyond this miss distance at max effort, the bot drives closer instead of firing
 
-// Difficulty presets. Only "medium" exists for now; easy/hard are future
-// entries in this same table, not a separate code path.
+// Difficulty presets - one shared code path in bot.js for both; every
+// behavioral difference between them is a parameter value here, not a
+// branch. "hard" is deliberately tuned so every new medium-only knob is a
+// no-op (rangeNoiseFloorMult/confidenceNoiseFloorMult at 1 = no effect,
+// evadeChance at 0 = never triggers), which collapses it to exactly the
+// original flat-Gaussian, move-only-when-unreachable bot. "medium" turns
+// those same knobs on. See CLAUDE.md's load-bearing decisions for the
+// reasoning behind each knob - short version: aimStdDev/thinkDelay* are
+// unchanged from the original model; the range/confidence/evade knobs
+// are the new adaptive layer on top.
 export var AI_LEVELS = {
   medium: {
-    aimStdDev: 45,        // px - stddev of the Gaussian-perturbed aim point around the opponent
-    thinkDelayMin: 0.5,   // seconds of "thinking" pause before committing to a shot
-    thinkDelayMax: 1.2
+    aimStdDev: 45,             // px - stddev ceiling of the Gaussian-perturbed aim point around the opponent
+    thinkDelayMin: 0.5,        // seconds of "thinking" pause before committing to a shot
+    thinkDelayMax: 1.2,
+    rangeNearPx: 300,          // at or below this shooter-opponent distance, noise is at its floor
+    rangeFarPx: 1200,          // at or above this distance, noise is at its full (aimStdDev) ceiling
+    rangeNoiseFloorMult: 0.4,  // noise multiplier at rangeNearPx or closer
+    recalibrateDistPx: 120,    // opponent displacement (since this shooter's last shot) that fully resets confidence
+    confidenceNoiseFloorMult: 0.5, // noise multiplier when the opponent hasn't moved at all since last shot
+    evadeChance: 0.6,          // odds of fleeing instead of aiming, when the opponent's last shot landed close
+    evadeTriggerDistPx: 180,   // "close" threshold for the above
+    evadeDistMin: 40,          // px - most evasive moves are small...
+    evadeDistMax: 350          // ...but occasionally much bigger (see startBotTurn's squared-uniform sample)
+  },
+  hard: {
+    aimStdDev: 45,
+    thinkDelayMin: 0.5,
+    thinkDelayMax: 1.2,
+    rangeNearPx: 300,
+    rangeFarPx: 1200,
+    rangeNoiseFloorMult: 1.0,  // no range effect - always full noise, like the original model
+    recalibrateDistPx: 120,
+    confidenceNoiseFloorMult: 1.0, // no confidence effect - never gets more precise from memory
+    evadeChance: 0,            // never flees
+    evadeTriggerDistPx: 180,
+    evadeDistMin: 40,
+    evadeDistMax: 350
   }
 };

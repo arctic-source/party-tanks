@@ -11,7 +11,7 @@ export function showScreen(id) {
 function defaultPlayerConfigs() {
   var arr = [];
   for (var i = 0; i < PLAYER_SLOTS; i++) {
-    arr.push({ name: "Player " + (i + 1), colorIndex: i % COLOR_PALETTE.length, mode: "human" });
+    arr.push({ name: "Player " + (i + 1), colorIndex: i % COLOR_PALETTE.length, mode: "human", aiLevel: "medium" });
   }
   return arr;
 }
@@ -128,6 +128,38 @@ function buildPlayerRow(i) {
   modeWrap.appendChild(botBtn);
   row.appendChild(modeWrap);
 
+  // Difficulty only matters for a bot slot - kept as a second toggle
+  // group rather than folded into the Player/Bot one so both stay a
+  // simple two-state pick. Not shown at all (not just disabled) for a
+  // human slot, so it never eats row width when irrelevant.
+  if (active && cfg.mode === "bot") {
+    var diffWrap = document.createElement("div");
+    diffWrap.className = "modeToggle diffToggle";
+    var medBtn = document.createElement("button");
+    medBtn.className = "modeBtn" + (cfg.aiLevel !== "hard" ? " active" : "");
+    medBtn.textContent = "Medium";
+    var hardBtn = document.createElement("button");
+    hardBtn.className = "modeBtn" + (cfg.aiLevel === "hard" ? " active" : "");
+    hardBtn.textContent = "Hard";
+    medBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (cfg.aiLevel !== "hard") return;
+      cfg.aiLevel = "medium";
+      savePlayerConfigs();
+      renderPlayerRows();
+    });
+    hardBtn.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      if (cfg.aiLevel === "hard") return;
+      cfg.aiLevel = "hard";
+      savePlayerConfigs();
+      renderPlayerRows();
+    });
+    diffWrap.appendChild(medBtn);
+    diffWrap.appendChild(hardBtn);
+    row.appendChild(diffWrap);
+  }
+
   return row;
 }
 
@@ -142,7 +174,7 @@ export function applyPlayerConfigToGame() {
   store.gameConfig.players = [0, 1].map(function (i) {
     var cfg = store.playerConfigs[i];
     var c = COLOR_PALETTE[cfg.colorIndex];
-    return { name: cfg.name, color: c.body, colorDark: c.dark, isBot: cfg.mode === "bot" };
+    return { name: cfg.name, color: c.body, colorDark: c.dark, isBot: cfg.mode === "bot", aiLevel: cfg.aiLevel };
   });
 }
 
