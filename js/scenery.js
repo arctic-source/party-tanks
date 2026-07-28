@@ -57,19 +57,29 @@ export function generateBgTrees() {
   store.bgTrees = bgTrees;
 }
 
-// Evenly spaced (with jitter) rather than fully random, since there are
-// only a handful of these and they're large - pure random placement risks
-// two overlapping while a third sits alone, which reads badly at this
-// scale (unlike the many-small-trees case above, where random is fine).
+// One clustered formation (a Giza-style trio), not independently scattered
+// pyramids - each one smaller than the last and offset to the right just
+// enough to overlap its predecessor, so it reads as "in front of" the
+// bigger one behind it. Array order IS draw order (background.js:
+// drawPyramidLayer iterates in order), so index 0 must be the biggest/
+// furthest-back one and later entries progressively smaller/more-front,
+// or the overlap reads backwards. The whole cluster's position (baseRx)
+// is still randomized per match, just not each pyramid independently.
 export function generateBgPyramids(count) {
-  var span = 3000;
   var pyramids = [];
+  var baseRx = 800 + Math.random() * 1400;
+  var cx = baseRx;
+  var prevHalfW = 0;
   for (var i = 0; i < count; i++) {
+    var scale = 1.0 - i * 0.32; // each one noticeably smaller than the last
+    var halfW = 110 * scale; // half of drawPyramidLayer's w = 220 * scale
+    if (i > 0) cx += prevHalfW * 0.55 + halfW * 0.55; // shift right by less than the combined half-widths, so they overlap
     pyramids.push({
-      rx: (i + 0.5) / count * span + (Math.random() - 0.5) * (span / count) * 0.4,
-      scale: 0.85 + Math.random() * 0.3,
+      rx: cx,
+      scale: scale,
       ridgeFrac: (Math.random() - 0.5) * 0.5 // where the light/dark face split sits along the base, as a fraction of half-width either side of center
     });
+    prevHalfW = halfW;
   }
   store.bgPyramids = pyramids;
 }

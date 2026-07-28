@@ -265,11 +265,14 @@ These came out of real back-and-forth with the user — don't casually
   sine-wave mountain silhouette (`drawMountainLayer`), just recolored -
   it doubles as convincing distant dunes for the desert map with zero
   new code. `bgFront` can instead set `shape: "pyramids"` to use
-  `drawPyramidLayer` (a handful of large, evenly-spaced-with-jitter
-  triangles from `store.bgPyramids`, generated once per match by
-  `scenery.js: generateBgPyramids` - deliberately spaced rather than
-  fully random since there are only a few of them and they're large, so
-  pure random risks two overlapping while a third sits alone). Each
+  `drawPyramidLayer`, drawing `store.bgPyramids` - one Giza-style
+  cluster (`scenery.js: generateBgPyramids`), not independently
+  scattered triangles: each entry is deliberately smaller than the
+  previous and offset just enough right to overlap it, and array order
+  IS draw order, so index 0 (biggest) paints first/furthest-back and
+  each later, smaller pyramid paints on top - "in front of" the one
+  before it. Don't reintroduce independent random placement per
+  pyramid; the overlap is the point, not something to avoid. Each
   pyramid is drawn as two triangles, not one - a lit face and a shaded
   face sharing the apex and a ridge line down to `py.ridgeFrac` along
   the base (stored per-pyramid for variety) - both computed from the
@@ -428,7 +431,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v12`). **Bump this version any time you change
+  (currently `party-tanks-v13`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
