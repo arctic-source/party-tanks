@@ -245,7 +245,12 @@ export var AI_LEVELS = {
     rangeNoiseFloorMult: 1.0,  // no range effect - always full noise, like the original model
     recalibrateDistPx: 120,
     confidenceNoiseFloorMult: 1.0, // no confidence effect - never gets more precise from memory
-    evadeChance: 0,            // never flees
+    evadeChance: 0.75,         // higher than medium's 0.6 - a bench run (100v100) showed hard
+    // bots never move at all (evadeChance was 0), landing at exactly the map's spawn
+    // distance shot after shot with no repositioning. Hard keeps its full aim precision
+    // (aimStdDev/confidence/range knobs above are unchanged) but now flees a fixed-position
+    // shot almost as often as medium - the precision is what should make hard feel harder,
+    // not a static target. Don't lower this back toward 0 without a reason; see CLAUDE.md.
     evadeTriggerDistPx: 180,
     evadeDistMin: 40,
     evadeDistMax: 350

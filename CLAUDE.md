@@ -372,16 +372,35 @@ These came out of real back-and-forth with the user — don't casually
   store.bot.phase === "moving"` specifically so a stray held-key state
   can't reposition the bot's tank during its post-aim "waiting to fire"
   pause.
+- **`hard`'s `evadeChance` is 0.75 - higher than medium's 0.6, not
+  zeroed.** It was originally 0 (hard was meant to be the flat-Gaussian,
+  original-model bot with no adaptive layer at all), but a bench batch
+  (`bench/run.js --matchup hard:hard --matches 100`) showed that with
+  `evadeChance: 0`, hard bots never moved once in 100 matches - `distance`
+  was logged as *exactly* `PLAYER_SPACING` (1200px) on every single shot,
+  since neither side ever repositions and `AI_UNREACHABLE_THRESHOLD` never
+  triggers at that range. That reads as "a static target with perfect
+  aim," not "a harder opponent" - it never forces the human to re-aim
+  mid-round the way a moving target does. Raising `evadeChance` (while
+  leaving `aimStdDev`/`rangeNoiseFloorMult`/`confidenceNoiseFloorMult`
+  untouched - hard's *precision* is still what should carry the
+  difficulty) makes hard flee a nearby impact about as often as medium,
+  giving the human something to actually react to, on top of - not
+  instead of - hard's tighter aim. Don't zero this back out without
+  re-running the bench to confirm hard bots are moving at all.
 - **Bot difficulty is one shared table, not per-level code paths -
   including the new adaptive behavior above.** (`AI_LEVELS` in
   `constants.js`: `medium` and `hard`.) Every knob introduced by the
   range/confidence/evade mechanics is a multiplier or a chance, and
-  `hard` is tuned so all of them are no-ops
-  (`rangeNoiseFloorMult`/`confidenceNoiseFloorMult` at `1`,
-  `evadeChance` at `0`) - which makes `hard` collapse to exactly the
-  original flat-Gaussian, move-only-when-unreachable bot, expressed as
-  data rather than a second code path. `bot.js` never checks which level
-  it's running; only the table values differ. Each active player slot
+  `hard`'s aim knobs are tuned so the range/confidence ones are no-ops
+  (`rangeNoiseFloorMult`/`confidenceNoiseFloorMult` at `1`) while its
+  `aimStdDev` (45) stays tighter than medium's (90) - so hard is a
+  strictly more precise shooter than medium, expressed as data rather
+  than a second code path. `bot.js` never checks which level it's
+  running; only the table values differ. `evadeChance` is *not* zeroed
+  for hard - see the load-bearing note on evasive movement below for why
+  a static, purely-precise hard bot turned out to be the wrong call.
+  Each active player slot
   picks its own level via `playerConfig.js` (a `Medium`/`Hard` toggle
   shown only when that slot is set to Bot) - `p.aiLevel` lives on the
   player object like `p.isBot`, read once in `tanks.js: newTank()` from
