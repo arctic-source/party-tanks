@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { randInt, lerpColor } from "./utils.js";
+import { randInt, lerpColor, hexToRgb } from "./utils.js";
 import { ctx } from "./canvas.js";
 import { drawPineTree } from "./scenery.js";
 
@@ -80,20 +80,47 @@ function drawMountainLayer(seed, parallaxFactor, alpha, color, baseY, amp, freq1
 // triangles (store.bgPyramids, generated once per match in scenery.js:
 // generateBgPyramids). No seed/sine-wave involved since positions are
 // discrete, not procedural - only the pan parallax offset moves them.
+//
+// Each pyramid is two triangles, not one - a lit face and a shaded face
+// sharing the apex and a ridge line down to a point along the base
+// (py.ridgeFrac, stored per-pyramid for a bit of natural variety). Both
+// triangles are computed from the exact same sx/w/h every frame, so they
+// can never drift apart under panning - there's no separate "second
+// object" to keep in sync, just two fills of one shape split down the
+// middle.
 function drawPyramidLayer(parallaxFactor, alpha, color, baseY) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
+  var rgb = hexToRgb(color);
+  var lightRgb = lerpColor(rgb, [255, 255, 255], 0.22);
+  var darkRgb = lerpColor(rgb, [0, 0, 0], 0.26);
+  var lightColor = "rgb(" + lightRgb[0] + "," + lightRgb[1] + "," + lightRgb[2] + ")";
+  var darkColor = "rgb(" + darkRgb[0] + "," + darkRgb[1] + "," + darkRgb[2] + ")";
   var parallax = store.camCenterX * parallaxFactor;
+
   for (var i = 0; i < store.bgPyramids.length; i++) {
     var py = store.bgPyramids[i];
     var sx = py.rx - parallax;
     var w = 220 * py.scale, h = 170 * py.scale;
     if (sx + w / 2 < 0 || sx - w / 2 > store.VIEW_W) continue;
+
+    var apexY = baseY - h;
+    var leftX = sx - w / 2, rightX = sx + w / 2;
+    var ridgeX = sx + (w / 2) * py.ridgeFrac;
+
+    ctx.fillStyle = lightColor;
     ctx.beginPath();
-    ctx.moveTo(sx, baseY - h);
-    ctx.lineTo(sx - w / 2, baseY);
-    ctx.lineTo(sx + w / 2, baseY);
+    ctx.moveTo(sx, apexY);
+    ctx.lineTo(leftX, baseY);
+    ctx.lineTo(ridgeX, baseY);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = darkColor;
+    ctx.beginPath();
+    ctx.moveTo(sx, apexY);
+    ctx.lineTo(ridgeX, baseY);
+    ctx.lineTo(rightX, baseY);
     ctx.closePath();
     ctx.fill();
   }

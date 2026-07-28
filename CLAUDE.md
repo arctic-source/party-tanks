@@ -269,7 +269,14 @@ These came out of real back-and-forth with the user — don't casually
   triangles from `store.bgPyramids`, generated once per match by
   `scenery.js: generateBgPyramids` - deliberately spaced rather than
   fully random since there are only a few of them and they're large, so
-  pure random risks two overlapping while a third sits alone). Both
+  pure random risks two overlapping while a third sits alone). Each
+  pyramid is drawn as two triangles, not one - a lit face and a shaded
+  face sharing the apex and a ridge line down to `py.ridgeFrac` along
+  the base (stored per-pyramid for variety) - both computed from the
+  exact same `sx`/`w`/`h` every frame, so they can't drift apart under
+  panning without a second, separately-tracked object; don't split them
+  into two entries in `store.bgPyramids` to "simplify" this, that would
+  reintroduce exactly the desync risk this avoids. Both
   `store.bgTrees` and `store.bgPyramids` are generated unconditionally
   every match regardless of which the active map's `bgFront` actually
   draws - simpler than gating generation itself, and cheap enough that
@@ -421,7 +428,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v11`). **Bump this version any time you change
+  (currently `party-tanks-v12`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

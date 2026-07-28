@@ -67,7 +67,8 @@ export function generateBgPyramids(count) {
   for (var i = 0; i < count; i++) {
     pyramids.push({
       rx: (i + 0.5) / count * span + (Math.random() - 0.5) * (span / count) * 0.4,
-      scale: 0.85 + Math.random() * 0.3
+      scale: 0.85 + Math.random() * 0.3,
+      ridgeFrac: (Math.random() - 0.5) * 0.5 // where the light/dark face split sits along the base, as a fraction of half-width either side of center
     });
   }
   store.bgPyramids = pyramids;
