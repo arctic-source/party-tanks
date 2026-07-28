@@ -12,14 +12,17 @@ export var store = {
   WORLD_W: 2200,
   playerStartXs: [],
 
-  // Terrain.
+  // Terrain/background/scenery. activeMap is the resolved MAPS[] entry
+  // for the current match (set once in main.js: startMatch()); ground
+  // colors, sky colors, background shapes and which scenery item type
+  // populates the map all read from it, rather than hardcoded values.
+  activeMap: null,
   terrain: [],
   terrainMountains: [],
   currentLayoutName: "",
-
-  // Scenery.
-  trees: [],
-  bgTrees: [],
+  scenery: [],
+  bgTrees: [], // small pine-tree silhouettes decorating the near mountain ridge - forest-specific, not part of the generic scenery system
+  bgPyramids: [],
   clouds: [],
   mountainSeed1: 0,
   mountainSeed2: 0,
@@ -39,6 +42,7 @@ export var store = {
   // the selected windLevelIndex points at in WIND_LEVELS.
   wind: 0,
   windLevelIndex: 1, // overwritten by the persisted value on load (playerConfig.js)
+  mapIndex: 0, // overwritten by the persisted value on load (playerConfig.js)
 
   // Bot turn state (bot.js). Only one player ever acts at a time, so this
   // is a single shared slot, not per-player - reset each time a bot's

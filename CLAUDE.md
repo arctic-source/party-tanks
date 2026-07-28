@@ -23,13 +23,18 @@ js/
   utils.js         pure helpers (random, color math) — no state dependency
   canvas.js         canvas/ctx/canvasWrap DOM refs + resizeCanvas()
   camera.js        center+zoom camera math, pan/pinch gesture handlers
-  terrain.js       terrain generation/query/deform + drawTerrain()
-  trees.js         tree lifecycle + drawing (alive/burning/ash)
-  background.js    sky gradient, parallax mountain layers, clouds
+  terrain.js       terrain generation/query/deform + drawTerrain() (shape
+                   shared by every map; only drawTerrain()'s colors,
+                   read from store.activeMap.ground, vary per map)
+  scenery.js       scenery item lifecycle + drawing (alive/burning/ash) -
+                   generic over item TYPE (pine tree, cactus, ...), see
+                   MAPS/SCENERY_TYPES in constants.js
+  background.js    sky gradient (per-map colors), parallax background
+                   layers (mountains or pyramids, per map), clouds
   tanks.js         tank type stats/art (TANK_TYPES-driven body drawers,
                    supply-crate-until-selected, bullet/flash/impact marks)
-  combat.js        fire(), resolveImpact(), tree-fire damage, turn resolution
-  playerConfig.js  pre-game screens, player name/color + wind config persistence
+  combat.js        fire(), resolveImpact(), scenery-fire damage, turn resolution
+  playerConfig.js  pre-game screens, player name/color + wind/map config persistence
   ui.js            turn/fuel/aim HUD text, per-player theming, toasts,
                    fullscreen button state
   bot.js           medium-difficulty AI: dry-run trajectory search + aim
@@ -41,7 +46,7 @@ js/
 ```
 
 Dependency direction is roughly: `store`/`constants`/`utils` (leaves) →
-`canvas` → `camera`/`terrain` → `trees`/`tanks`/`background` →
+`canvas` → `camera`/`terrain` → `scenery`/`tanks`/`background` →
 `combat`/`playerConfig`/`ui` → `bot`/`tankSelect` → `main` (root, imports
 everything, has no exports). Keep new code flowing in this direction —
 e.g. `terrain.js` should never import from `combat.js`.
@@ -82,8 +87,8 @@ These came out of real back-and-forth with the user — don't casually
   width: `WORLD_W = PLAYER_SPACING * MAP_SIZE_MULTIPLIER * max(1, n-1) +
   WING_MARGIN*2` (`main.js: computeArenaLayout`). This exists because a flat
   world width put interesting terrain features far from the actual players
-  most of the time. Mountain placement (`terrain.js`) and tree placement
-  (`trees.js`) both key off `playerStartXs`/`ARENA_BUFFER`, not `WORLD_W`
+  most of the time. Mountain placement (`terrain.js`) and scenery placement
+  (`scenery.js`) both key off `playerStartXs`/`ARENA_BUFFER`, not `WORLD_W`
   directly — keep that if you touch scenery generation.
 - **5 weighted mountain layout archetypes** (Open Plains / The Ridge / Twin
   Peaks / Mountain Range / Off to the Side, in `terrain.js:
@@ -231,11 +236,44 @@ These came out of real back-and-forth with the user — don't casually
   the reveal + button relabel are the feedback; a toast would just add a
   second, redundant message on top of what's already on screen during the
   same pause.
-- **Trees have a 3-state lifecycle**: alive → burning (ignites on bullet
-  hit, stops blocking bullets, damages nearby tanks each turn via
-  `applyTreeFireDamage`) → ash (`BURN_TURNS` turns later, rendered behind
-  tanks, no collision). Preserve the state machine if you touch tree
-  behavior.
+- **Scenery has a 3-state lifecycle, but only for burnable types**: alive
+  → burning (ignites on bullet hit, stops blocking bullets, damages
+  nearby tanks each turn via `applySceneryFireDamage`) → ash
+  (`BURN_TURNS` turns later, rendered behind tanks, no collision).
+  Whether a hit can even start that transition is gated by the active
+  map's scenery type (`constants.js: SCENERY_TYPES[key].burnable`) - see
+  the maps/scenery load-bearing decision below. Preserve the state
+  machine if you touch scenery behavior.
+- **Maps are one shared table, not per-map code paths - same pattern as
+  `TANK_TYPES`/`AI_LEVELS`.** (`MAPS` in `constants.js`, resolved once
+  per match into `store.activeMap` by `main.js: startMatch()`.) Every
+  file that used to hardcode a color or a tree-specific constant now
+  reads it from `store.activeMap` instead: `terrain.js: drawTerrain()`
+  reads `.ground.*` for the dirt/grass/tuft colors, `background.js:
+  drawBackground()` reads `.sky`/`.bgBack`/`.bgFront`, and
+  `scenery.js`/`main.js`/`bot.js` all read `SCENERY_TYPES[.scenery]` for
+  which item populates the map and its collision profile
+  (`baseHeight`/`canopyFrac`/`radiusFrac`/`burnable`). Terrain SHAPE
+  (`terrain.js: generateTerrain`'s rolling hills + mountain archetypes)
+  is deliberately shared by every map, unlike everything else - a map
+  that needs a genuinely different shape (flat rooftops, a hazard you
+  can fall/drown in, etc.) is a bigger change than this table supports
+  and would need `generateTerrain` itself to become pluggable per map;
+  don't force one into this table without that redesign.
+- **A map's background can use a different near-layer SHAPE, not just
+  different colors.** (`background.js`.) `bgBack` is always the existing
+  sine-wave mountain silhouette (`drawMountainLayer`), just recolored -
+  it doubles as convincing distant dunes for the desert map with zero
+  new code. `bgFront` can instead set `shape: "pyramids"` to use
+  `drawPyramidLayer` (a handful of large, evenly-spaced-with-jitter
+  triangles from `store.bgPyramids`, generated once per match by
+  `scenery.js: generateBgPyramids` - deliberately spaced rather than
+  fully random since there are only a few of them and they're large, so
+  pure random risks two overlapping while a third sits alone). Both
+  `store.bgTrees` and `store.bgPyramids` are generated unconditionally
+  every match regardless of which the active map's `bgFront` actually
+  draws - simpler than gating generation itself, and cheap enough that
+  generating the unused one is not worth the extra branch.
 - **Player config (names/colors) persists via `localStorage`**
   (`PLAYER_CONFIG_KEY` in `constants.js`), loaded once at module init in
   `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` are editable; the rest
@@ -383,7 +421,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v10`). **Bump this version any time you change
+  (currently `party-tanks-v11`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -414,8 +452,6 @@ more valuable than it staying short.
 Not bugs — these are stubbed for future work and are locked in the UI on
 purpose:
 - **Rounds** is locked to 1 (no best-of-N yet).
-- **Map** is locked to "Chill Forest" (no map selector yet, though the
-  terrain-generation system already supports variation within it).
 - **Map size multiplier** (`MAP_SIZE_MULTIPLIER` in `constants.js`) is
   fixed at `1.0` — there's no Small/Large selector yet, though
   `computeArenaLayout()` already reads this constant so wiring one up is

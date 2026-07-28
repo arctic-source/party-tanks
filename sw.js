@@ -1,4 +1,4 @@
-var CACHE_NAME = "party-tanks-v10";
+var CACHE_NAME = "party-tanks-v11";
 var ASSETS = [
   "./",
   "./index.html",
@@ -13,7 +13,7 @@ var ASSETS = [
   "./js/canvas.js",
   "./js/camera.js",
   "./js/terrain.js",
-  "./js/trees.js",
+  "./js/scenery.js",
   "./js/background.js",
   "./js/tanks.js",
   "./js/combat.js",

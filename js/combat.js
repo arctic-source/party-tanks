@@ -1,6 +1,6 @@
 import { store } from "./store.js";
 import {
-  POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, TREE_FIRE_RADIUS, TREE_FIRE_DAMAGE, FUEL_MAX
+  POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, SCENERY_FIRE_RADIUS, SCENERY_FIRE_DAMAGE, FUEL_MAX
 } from "./constants.js";
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive } from "./camera.js";
@@ -54,23 +54,23 @@ export function resolveImpact(x, y, hitTank, t) {
   store.state = "resolve";
 }
 
-export function applyTreeFireDamage() {
+export function applySceneryFireDamage() {
   var messages = [];
   for (var i = 0; i < store.players.length; i++) {
     var p = store.players[i];
-    var burned = store.trees.some(function (t) {
-      return t.state === "burning" && Math.abs(p.x - t.x) < TREE_FIRE_RADIUS;
+    var burned = store.scenery.some(function (t) {
+      return t.state === "burning" && Math.abs(p.x - t.x) < SCENERY_FIRE_RADIUS;
     });
     if (burned) {
-      p.health = Math.max(0, p.health - TREE_FIRE_DAMAGE);
-      messages.push(p.name + " took " + TREE_FIRE_DAMAGE + " HP from a burning tree!");
+      p.health = Math.max(0, p.health - SCENERY_FIRE_DAMAGE);
+      messages.push(p.name + " took " + SCENERY_FIRE_DAMAGE + " HP from a burning tree!");
     }
   }
   if (messages.length) showToast("🔥 " + messages.join(" "));
 }
 
-export function decayTrees() {
-  store.trees.forEach(function (t) {
+export function decayScenery() {
+  store.scenery.forEach(function (t) {
     if (t.state === "burning") {
       t.burnTurnsLeft--;
       if (t.burnTurnsLeft <= 0) t.state = "ash";
@@ -79,7 +79,7 @@ export function decayTrees() {
 }
 
 export function afterResolve() {
-  applyTreeFireDamage();
+  applySceneryFireDamage();
 
   var loser = store.players.filter(function (p) { return p.health <= 0; })[0];
   if (loser) {
@@ -89,7 +89,7 @@ export function afterResolve() {
     store.state = "gameover";
     return;
   }
-  decayTrees();
+  decayScenery();
   store.active = 1 - store.active;
   store.players[store.active].fuel = FUEL_MAX;
   store.state = "aim";

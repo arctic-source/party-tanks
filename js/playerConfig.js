@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { COLOR_PALETTE, PLAYER_SLOTS, ACTIVE_SLOTS, PLAYER_CONFIG_KEY, WIND_LEVELS, WIND_LEVEL_KEY } from "./constants.js";
+import { COLOR_PALETTE, PLAYER_SLOTS, ACTIVE_SLOTS, PLAYER_CONFIG_KEY, WIND_LEVELS, WIND_LEVEL_KEY, MAPS, MAP_KEY } from "./constants.js";
 
 export function showScreen(id) {
   ["screenWelcome", "screenPlayers", "screenRounds", "screenMatch"].forEach(function (sid) {
@@ -209,4 +209,37 @@ export function changeWindLevel(delta) {
   store.windLevelIndex = next;
   saveWindLevelIndex();
   renderWindConfig();
+}
+
+function loadMapIndex() {
+  try {
+    var raw = localStorage.getItem(MAP_KEY);
+    var idx = raw !== null ? parseInt(raw, 10) : NaN;
+    if (!isNaN(idx) && MAPS[idx]) return idx;
+  } catch (e) {}
+  return 0; // default: first map (Chill Forest)
+}
+
+function saveMapIndex() {
+  try { localStorage.setItem(MAP_KEY, String(store.mapIndex)); } catch (e) {}
+}
+
+store.mapIndex = loadMapIndex();
+
+export function renderMapConfig() {
+  var valueEl = document.getElementById("mapValueDisplay");
+  var leftBtn = document.getElementById("mapArrowLeftBtn");
+  var rightBtn = document.getElementById("mapArrowRightBtn");
+  if (!valueEl) return;
+  valueEl.textContent = MAPS[store.mapIndex].name;
+  leftBtn.disabled = store.mapIndex <= 0;
+  rightBtn.disabled = store.mapIndex >= MAPS.length - 1;
+}
+
+export function changeMapIndex(delta) {
+  var next = Math.max(0, Math.min(MAPS.length - 1, store.mapIndex + delta));
+  if (next === store.mapIndex) return;
+  store.mapIndex = next;
+  saveMapIndex();
+  renderMapConfig();
 }

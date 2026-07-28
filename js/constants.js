@@ -98,12 +98,76 @@ export var TANK_TYPES = [
 export var TANK_SELECT_BOT_LOOK_MS = 700; // bot: how long its box stays on screen, camera already centered on it, before the pick+reveal fires
 export var TANK_SELECT_REVEAL_DELAY_MS = 900; // both: how long the just-revealed tank stays on screen before advancing/panning to the next player (or finishing)
 
-export var TREE_BASE_HEIGHT = 80; // px at scale 1 - deliberately taller than any tank's hitHeight so trees are viable to hide behind
-export var TREE_CANOPY_FRAC = 0.52; // fraction of height above ground used as hit-circle center
-export var TREE_RADIUS_FRAC = 0.30; // fraction of height used as hit-circle radius
-export var TREE_FIRE_RADIUS = 34;
-export var TREE_FIRE_DAMAGE = 25;
+// ---------- Scenery types ----------
+// One entry per placeable scenery item (scenery.js), the same "one shared
+// table" pattern as TANK_TYPES. baseHeight/canopyFrac/radiusFrac define
+// the hit-circle collision (see scenery.js/main.js/bot.js - all three
+// derive tH/canopyY/radius from these three fields identically, so
+// changing them here changes collision and drawn size together).
+// burnable: false means a bullet hit just blocks/leaves an impact mark -
+// the item stays "alive" forever and never enters "burning"/"ash" (see
+// main.js's flight-state collision branch, which only assigns
+// "burning" when the active map's scenery type allows it).
+export var SCENERY_TYPES = {
+  pineTree: {
+    name: "Pine Tree",
+    baseHeight: 80, // px at scale 1 - deliberately taller than any tank's hitHeight so trees are viable to hide behind
+    canopyFrac: 0.52,
+    radiusFrac: 0.30,
+    burnable: true
+  },
+  cactus: {
+    name: "Cactus",
+    baseHeight: 65,
+    canopyFrac: 0.50,
+    radiusFrac: 0.22, // narrower than a pine's canopy - a slender saguaro silhouette
+    burnable: false
+  }
+};
+
+export var SCENERY_FIRE_RADIUS = 34;
+export var SCENERY_FIRE_DAMAGE = 25;
 export var BURN_TURNS = 3;
+
+// ---------- Maps ----------
+// One entry per selectable map. Terrain SHAPE (generateTerrain's rolling
+// hills + mountain archetypes in terrain.js) is intentionally shared by
+// every map - only palette (ground/sky/background) and which scenery
+// type populates it vary here. A map with a genuinely different terrain
+// shape (flat rooftops, hazards you can fall/drown in, etc.) is a bigger
+// change than this table supports today - don't force one in here
+// without redesigning terrain.js's generator to be pluggable per map.
+// bgBack is always the far mountain-silhouette layer (background.js:
+// drawMountainLayer, just recolored per map); bgFront can instead use
+// shape:"pyramids" (background.js: drawPyramidLayer) for a map that
+// wants a visually distinct near background layer.
+export var MAPS = [
+  {
+    key: "chillForest",
+    name: "Chill Forest",
+    scenery: "pineTree",
+    sky: { dark: [0x22, 0x34, 0x5c], top: [0x7f, 0xa8, 0xcf], bot: [0xc9, 0xdc, 0xed] },
+    ground: {
+      surfaceTop: "#7a5636", surfaceMid: "#5c3f26", surfaceDeep: "#241811",
+      crustTop: "#68c751", crustBottom: "#2f7a34", detailColor: "#2f7a34"
+    },
+    bgBack: { color: "#7793ab" },
+    bgFront: { shape: "mountains", color: "#5c7a99", withDecor: true }
+  },
+  {
+    key: "desert",
+    name: "Desert Dunes",
+    scenery: "cactus",
+    sky: { dark: [0x0a, 0x14, 0x38], top: [0x1b, 0x3c, 0x78], bot: [0x6f, 0x99, 0xc9] },
+    ground: {
+      surfaceTop: "#d9b25c", surfaceMid: "#a97c34", surfaceDeep: "#4a3015",
+      crustTop: "#e8cd82", crustBottom: "#c9a24a", detailColor: "#9a7530"
+    },
+    bgBack: { color: "#8a6a42" },
+    bgFront: { shape: "pyramids", color: "#caa25c", count: 3 }
+  }
+];
+export var MAP_KEY = "partytanks.map.v1";
 
 export var COLOR_PALETTE = [
   { name: "Red", body: "#d1432c", dark: "#8a2a1a" },

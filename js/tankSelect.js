@@ -139,7 +139,7 @@ function finishTankSelection() {
   store.state = "aim";
   centerCameraOnActive();
   updateTurnUI();
-  showToast("Terrain: " + store.currentLayoutName);
+  showToast(store.activeMap.name + " — " + store.currentLayoutName);
 }
 
 function advanceOrFinish() {

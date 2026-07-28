@@ -1,7 +1,7 @@
 import { store } from "./store.js";
 import {
   GRAVITY, WIND_MAX_ACCEL, POWER_TO_SPEED,
-  ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, TREE_BASE_HEIGHT, TREE_CANOPY_FRAC, TREE_RADIUS_FRAC,
+  ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, SCENERY_TYPES,
   AI_LEVELS, AI_SIM_DT, AI_SIM_MAX_TIME, AI_COARSE_ANGLE_STEPS, AI_COARSE_POWER_STEPS, AI_REFINE_STEPS,
   AI_UNREACHABLE_THRESHOLD
 } from "./constants.js";
@@ -32,6 +32,7 @@ function simulateLanding(shooter, angle, power) {
   var vx = bx * speed;
   var vy = by * speed;
   var elapsed = 0;
+  var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
 
   while (elapsed < AI_SIM_MAX_TIME) {
     vy += GRAVITY * AI_SIM_DT;
@@ -43,13 +44,13 @@ function simulateLanding(shooter, angle, power) {
     if (x < 0) return 0;
     if (x > store.WORLD_W) return store.WORLD_W;
 
-    for (var i = 0; i < store.trees.length; i++) {
-      var t = store.trees[i];
+    for (var i = 0; i < store.scenery.length; i++) {
+      var t = store.scenery[i];
       if (t.state !== "alive") continue;
-      var tH = TREE_BASE_HEIGHT * t.scale;
-      var tCanopyY = terrainHeightAt(t.x) - tH * TREE_CANOPY_FRAC;
+      var tH = sceneryType.baseHeight * t.scale;
+      var tCanopyY = terrainHeightAt(t.x) - tH * sceneryType.canopyFrac;
       var tdx = x - t.x, tdy = y - tCanopyY;
-      var tRadius = tH * TREE_RADIUS_FRAC;
+      var tRadius = tH * sceneryType.radiusFrac;
       if (tdx * tdx + tdy * tdy <= tRadius * tRadius) return x;
     }
 

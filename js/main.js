@@ -1,9 +1,9 @@
 import { store } from "./store.js";
 import {
-  PLAYER_SPACING, WING_MARGIN, MAP_SIZE_MULTIPLIER,
+  PLAYER_SPACING, WING_MARGIN, MAP_SIZE_MULTIPLIER, MAPS,
   GRAVITY, WIND_MAX_ACCEL,
   ANGLE_MIN, ANGLE_MAX, ANGLE_RATE, POWER_MIN, POWER_MAX, POWER_RATE,
-  TREE_BASE_HEIGHT, TREE_CANOPY_FRAC, TREE_RADIUS_FRAC, BURN_TURNS,
+  SCENERY_TYPES, BURN_TURNS,
   SELF_DAMAGE_GRACE
 } from "./constants.js";
 import { ctx, canvasWrap, resizeCanvas } from "./canvas.js";
@@ -12,11 +12,11 @@ import {
   onPointerDown, onPointerMove, onPointerUp
 } from "./camera.js";
 import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
-import { generateTrees, generateBgTrees, drawTrees } from "./trees.js";
+import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery } from "./scenery.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
-import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, applyPlayerConfigToGame } from "./playerConfig.js";
+import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
 import { runBot } from "./bot.js";
 import { beginTankSelection, confirmTankSelection } from "./tankSelect.js";
@@ -38,6 +38,7 @@ function computeArenaLayout() {
 }
 
 function startMatch() {
+  store.activeMap = MAPS[store.mapIndex];
   computeArenaLayout();
   generateTerrain();
   store.players = [newTank(0), newTank(1)];
@@ -46,8 +47,9 @@ function startMatch() {
   store.lastImpact = [null, null];
   store.mountainSeed1 = Math.random() * 1000;
   store.mountainSeed2 = Math.random() * 1000;
-  generateTrees([store.players[0].x, store.players[1].x]);
+  generateScenery([store.players[0].x, store.players[1].x]);
   generateBgTrees();
+  generateBgPyramids(store.activeMap.bgFront.count || 3);
   generateClouds();
   store.held.left = false;
   store.held.right = false;
@@ -123,6 +125,14 @@ document.getElementById("windArrowLeftBtn").addEventListener("pointerdown", func
 document.getElementById("windArrowRightBtn").addEventListener("pointerdown", function (e) {
   e.preventDefault();
   changeWindLevel(1);
+});
+document.getElementById("mapArrowLeftBtn").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  changeMapIndex(-1);
+});
+document.getElementById("mapArrowRightBtn").addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  changeMapIndex(1);
 });
 
 // ---------- Fullscreen toggle ----------
@@ -232,20 +242,25 @@ function update(dt) {
     var selfT = bullet.elapsed >= SELF_DAMAGE_GRACE ? hitTest(bullet, shooter) : null;
     var defT = hitTest(bullet, defender);
 
-    var hitTree = null;
-    for (var ti = 0; ti < store.trees.length; ti++) {
-      var tr = store.trees[ti];
+    var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
+    var hitItem = null;
+    for (var ti = 0; ti < store.scenery.length; ti++) {
+      var tr = store.scenery[ti];
       if (tr.state !== "alive") continue;
-      var tH = TREE_BASE_HEIGHT * tr.scale;
-      var tCanopyY = terrainHeightAt(tr.x) - tH * TREE_CANOPY_FRAC;
+      var tH = sceneryType.baseHeight * tr.scale;
+      var tCanopyY = terrainHeightAt(tr.x) - tH * sceneryType.canopyFrac;
       var tdx = bullet.x - tr.x, tdy = bullet.y - tCanopyY;
-      var tRadius = tH * TREE_RADIUS_FRAC;
-      if (tdx * tdx + tdy * tdy <= tRadius * tRadius) { hitTree = tr; break; }
+      var tRadius = tH * sceneryType.radiusFrac;
+      if (tdx * tdx + tdy * tdy <= tRadius * tRadius) { hitItem = tr; break; }
     }
 
-    if (hitTree) {
-      hitTree.state = "burning";
-      hitTree.burnTurnsLeft = BURN_TURNS;
+    if (hitItem) {
+      // Non-burnable scenery (a rock, a cactus, ...) just blocks the
+      // bullet and stays exactly as it was - no state change at all.
+      if (sceneryType.burnable) {
+        hitItem.state = "burning";
+        hitItem.burnTurnsLeft = BURN_TURNS;
+      }
       resolveImpact(bullet.x, bullet.y, null);
     } else if (bullet.x < 0 || bullet.x > store.WORLD_W) {
       resolveImpact(bullet.x, bullet.y, null);
@@ -274,10 +289,10 @@ function render() {
   ctx.translate(-store.camCenterX, -store.camCenterY);
   drawTerrain();
   drawImpactMarks();
-  drawTrees("ash");
+  drawScenery("ash");
   store.players.forEach(drawTank);
-  drawTrees("alive");
-  drawTrees("burning");
+  drawScenery("alive");
+  drawScenery("burning");
   drawBullet();
   drawFlash();
   drawClouds();
@@ -308,6 +323,7 @@ function beginMatchFromConfig() {
 function boot() {
   renderPlayerRows();
   renderWindConfig();
+  renderMapConfig();
   showScreen("screenWelcome");
   requestAnimationFrame(frame);
 }

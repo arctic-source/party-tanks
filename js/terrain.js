@@ -170,6 +170,8 @@ export function drawTerrain() {
   }
   if (minSurfaceY === Infinity) minSurfaceY = 0;
 
+  var ground = store.activeMap.ground;
+
   ctx.beginPath();
   ctx.moveTo(x0, bottom);
   for (var x = x0; x <= x1; x += 2) {
@@ -178,9 +180,9 @@ export function drawTerrain() {
   ctx.lineTo(x1, bottom);
   ctx.closePath();
   var dirtGrad = ctx.createLinearGradient(0, minSurfaceY, 0, minSurfaceY + 650);
-  dirtGrad.addColorStop(0, "#7a5636");
-  dirtGrad.addColorStop(0.35, "#5c3f26");
-  dirtGrad.addColorStop(1, "#241811");
+  dirtGrad.addColorStop(0, ground.surfaceTop);
+  dirtGrad.addColorStop(0.35, ground.surfaceMid);
+  dirtGrad.addColorStop(1, ground.surfaceDeep);
   ctx.fillStyle = dirtGrad;
   ctx.fill();
 
@@ -199,12 +201,12 @@ export function drawTerrain() {
   }
   ctx.closePath();
   var grassGrad = ctx.createLinearGradient(0, minSurfaceY, 0, minSurfaceY + bandThickness + 3);
-  grassGrad.addColorStop(0, "#68c751");
-  grassGrad.addColorStop(1, "#2f7a34");
+  grassGrad.addColorStop(0, ground.crustTop);
+  grassGrad.addColorStop(1, ground.crustBottom);
   ctx.fillStyle = grassGrad;
   ctx.fill();
 
-  ctx.strokeStyle = "#2f7a34";
+  ctx.strokeStyle = ground.detailColor;
   ctx.lineWidth = 1.4 / store.camZoom;
   var tuftSpacing = 13;
   for (var xt = Math.floor(x0 / tuftSpacing) * tuftSpacing; xt <= x1; xt += tuftSpacing) {
