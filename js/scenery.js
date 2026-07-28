@@ -13,6 +13,26 @@ export function makeSceneryItem(x) {
   return { x: x, state: "alive", burnTurnsLeft: 0, scale: 0.95 + Math.random() * 0.55 };
 }
 
+// Circle-hit test against every currently-alive scenery item, at a single
+// point in world space. Shared by the real bullet flight resolution
+// (main.js) and the bot's dry-run flight simulator (bot.js) - those two
+// used to hand-duplicate this exact collision math, which meant a change
+// to the collision shape in one could silently drift from the other.
+// Returns the hit item, or null.
+export function sceneryHitAt(x, y) {
+  var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
+  for (var i = 0; i < store.scenery.length; i++) {
+    var t = store.scenery[i];
+    if (t.state !== "alive") continue;
+    var h = sceneryType.baseHeight * t.scale;
+    var canopyY = terrainHeightAt(t.x) - h * sceneryType.canopyFrac;
+    var dx = x - t.x, dy = y - canopyY;
+    var radius = h * sceneryType.radiusFrac;
+    if (dx * dx + dy * dy <= radius * radius) return t;
+  }
+  return null;
+}
+
 export function generateScenery(tankXs) {
   var items = [];
   var playMinX = Math.max(0, Math.min.apply(null, tankXs) - ARENA_BUFFER);

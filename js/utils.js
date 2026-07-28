@@ -31,6 +31,22 @@ export function mixHex(hexA, hexB, t) {
 
 export function lerp(a, b, t) { return a + (b - a) * t; }
 
+// Integrates one dt of ballistic motion in place on a {x,y,vx,vy} object -
+// gravity and wind are passed in as plain accelerations (not read from
+// store/constants here) so this stays a pure helper. Shared by the real
+// bullet flight in main.js's update() and the bot's dry-run flight
+// simulator in bot.js: those two used to hand-duplicate this exact
+// integration, which meant a physics tweak in one could silently drift
+// from the other. Order matters no more than before - velocity updates
+// then position updates, same as the original inline code in both places.
+export function stepBallistic(p, gravity, windAccel, dt) {
+  p.vy += gravity * dt;
+  p.vx += windAccel * dt;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  return p;
+}
+
 export function lerpColor(a, b, t) {
   return [
     Math.round(a[0] + (b[0] - a[0]) * t),

@@ -1,18 +1,22 @@
 import { store } from "./store.js";
 import {
   GRAVITY, WIND_MAX_ACCEL, POWER_TO_SPEED,
-  ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX, SCENERY_TYPES,
+  ANGLE_MIN, ANGLE_MAX, POWER_MIN, POWER_MAX,
   AI_LEVELS, AI_SIM_DT, AI_SIM_MAX_TIME, AI_COARSE_ANGLE_STEPS, AI_COARSE_POWER_STEPS, AI_REFINE_STEPS,
   AI_UNREACHABLE_THRESHOLD
 } from "./constants.js";
 import { terrainHeightAt } from "./terrain.js";
-import { randRange, gaussianRandom, lerp } from "./utils.js";
+import { sceneryHitAt } from "./scenery.js";
+import { randRange, gaussianRandom, lerp, stepBallistic } from "./utils.js";
 import { fire } from "./combat.js";
 
-// Dry-run flight simulator - mirrors the real "flight" physics in
-// main.js's update() (same gravity/wind integration and terrain/tree
-// stopping conditions) but never touches store.bullet, so the search
-// below can try hundreds of candidate shots per turn with no side effects.
+// Dry-run flight simulator - reuses the real "flight" physics main.js's
+// update() runs on store.bullet (utils.js: stepBallistic for gravity/wind
+// integration, scenery.js: sceneryHitAt for tree/rock collision) but never
+// touches store.bullet itself, so the search below can try hundreds of
+// candidate shots per turn with no side effects. Sharing those two pieces
+// instead of hand-copying them means a future physics/collision change
+// can't silently drift between the real flight and this simulation.
 // Takes the actual shooter tank object (not just x/idx) so the simulated
 // spawn point matches that tank type's own barrelPivotX/Y/Length exactly,
 // same as the real fire(). Returns the x where the shot would come to
@@ -27,36 +31,24 @@ function simulateLanding(shooter, angle, power) {
   var speed = power * POWER_TO_SPEED;
   var pivotX = shooterX + shooter.barrelPivotX * dir;
   var pivotY = terrainHeightAt(shooterX) - shooter.barrelPivotY;
-  var x = pivotX + bx * shooter.barrelLength;
-  var y = pivotY + by * shooter.barrelLength;
-  var vx = bx * speed;
-  var vy = by * speed;
+  var pos = {
+    x: pivotX + bx * shooter.barrelLength,
+    y: pivotY + by * shooter.barrelLength,
+    vx: bx * speed,
+    vy: by * speed
+  };
   var elapsed = 0;
-  var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
 
   while (elapsed < AI_SIM_MAX_TIME) {
-    vy += GRAVITY * AI_SIM_DT;
-    vx += store.wind * WIND_MAX_ACCEL * AI_SIM_DT;
-    x += vx * AI_SIM_DT;
-    y += vy * AI_SIM_DT;
+    stepBallistic(pos, GRAVITY, store.wind * WIND_MAX_ACCEL, AI_SIM_DT);
     elapsed += AI_SIM_DT;
 
-    if (x < 0) return 0;
-    if (x > store.WORLD_W) return store.WORLD_W;
-
-    for (var i = 0; i < store.scenery.length; i++) {
-      var t = store.scenery[i];
-      if (t.state !== "alive") continue;
-      var tH = sceneryType.baseHeight * t.scale;
-      var tCanopyY = terrainHeightAt(t.x) - tH * sceneryType.canopyFrac;
-      var tdx = x - t.x, tdy = y - tCanopyY;
-      var tRadius = tH * sceneryType.radiusFrac;
-      if (tdx * tdx + tdy * tdy <= tRadius * tRadius) return x;
-    }
-
-    if (y >= terrainHeightAt(x)) return x;
+    if (pos.x < 0) return 0;
+    if (pos.x > store.WORLD_W) return store.WORLD_W;
+    if (sceneryHitAt(pos.x, pos.y)) return pos.x;
+    if (pos.y >= terrainHeightAt(pos.x)) return pos.x;
   }
-  return x;
+  return pos.x;
 }
 
 function gridSearch(shooter, targetX, angleLo, angleHi, angleSteps, powerLo, powerHi, powerSteps) {

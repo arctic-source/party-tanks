@@ -12,7 +12,8 @@ import {
   onPointerDown, onPointerMove, onPointerUp
 } from "./camera.js";
 import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
-import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery } from "./scenery.js";
+import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, sceneryHitAt } from "./scenery.js";
+import { stepBallistic } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
@@ -228,10 +229,7 @@ export function update(dt) {
     updateAimUI();
   } else if (store.state === "flight") {
     var bullet = store.bullet;
-    bullet.vy += GRAVITY * dt;
-    bullet.vx += store.wind * WIND_MAX_ACCEL * dt;
-    bullet.x += bullet.vx * dt;
-    bullet.y += bullet.vy * dt;
+    stepBallistic(bullet, GRAVITY, store.wind * WIND_MAX_ACCEL, dt);
     bullet.elapsed += dt;
 
     // camera follows bullet
@@ -249,16 +247,7 @@ export function update(dt) {
     var defT = hitTest(bullet, defender);
 
     var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
-    var hitItem = null;
-    for (var ti = 0; ti < store.scenery.length; ti++) {
-      var tr = store.scenery[ti];
-      if (tr.state !== "alive") continue;
-      var tH = sceneryType.baseHeight * tr.scale;
-      var tCanopyY = terrainHeightAt(tr.x) - tH * sceneryType.canopyFrac;
-      var tdx = bullet.x - tr.x, tdy = bullet.y - tCanopyY;
-      var tRadius = tH * sceneryType.radiusFrac;
-      if (tdx * tdx + tdy * tdy <= tRadius * tRadius) { hitItem = tr; break; }
-    }
+    var hitItem = sceneryHitAt(bullet.x, bullet.y);
 
     if (hitItem) {
       // Non-burnable scenery (a rock, a cactus, ...) just blocks the
