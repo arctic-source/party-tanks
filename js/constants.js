@@ -98,7 +98,7 @@ export var TANK_TYPES = [
 export var TANK_SELECT_BOT_LOOK_MS = 700; // bot: how long its box stays on screen, camera already centered on it, before the pick+reveal fires
 export var TANK_SELECT_REVEAL_DELAY_MS = 900; // both: how long the just-revealed tank stays on screen before advancing/panning to the next player (or finishing)
 
-export var TREE_BASE_HEIGHT = 40; // px at scale 1
+export var TREE_BASE_HEIGHT = 80; // px at scale 1 - deliberately taller than any tank's hitHeight so trees are viable to hide behind
 export var TREE_CANOPY_FRAC = 0.52; // fraction of height above ground used as hit-circle center
 export var TREE_RADIUS_FRAC = 0.30; // fraction of height used as hit-circle radius
 export var TREE_FIRE_RADIUS = 34;
