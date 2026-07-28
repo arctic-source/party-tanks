@@ -29,11 +29,11 @@ A batch of 60 matches should take low single-digit seconds.
 
 ```
 node bench/run.js --matchup medium:medium --matches 60
-node bench/run.js --matchup medium:medium,medium:hard,hard:hard --matches 40 --seed 42
+node bench/run.js --matchup easy:easy,medium:medium,hard:hard --matches 40 --seed 42
 node bench/run.js --help
 ```
 
-Key flags: `--matchup p1:p2,...` (aiLevel pairs, `medium`/`hard`),
+Key flags: `--matchup p1:p2,...` (aiLevel pairs, `easy`/`medium`/`hard`),
 `--matches <N>` (per matchup), `--map chillForest|desert|random`,
 `--wind none|light|strong|random`, `--seed <N>` (reproducible A/B runs -
 use the same seed on a "before" and "after" run when the only thing that

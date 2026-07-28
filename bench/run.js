@@ -22,7 +22,7 @@ function printHelp() {
 Usage: node bench/run.js [options]
 
   --matchup <p1:p2,p1:p2,...>   Comma-separated aiLevel matchups.
-                                  Valid levels: medium, hard. Default: medium:medium
+                                  Valid levels: easy, medium, hard. Default: medium:medium
   --matches <N>                  Matches per matchup. Default: 60
   --map <chillForest|desert|random>   Default: random
   --wind <none|light|strong|random>   Default: random
@@ -34,7 +34,7 @@ Usage: node bench/run.js [options]
 
 Examples:
   node bench/run.js --matchup medium:medium --matches 60
-  node bench/run.js --matchup medium:medium,medium:hard,hard:hard --matches 40 --seed 42
+  node bench/run.js --matchup easy:easy,medium:medium,hard:hard --matches 40 --seed 42
 `);
 }
 

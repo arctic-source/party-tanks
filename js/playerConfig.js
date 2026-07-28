@@ -129,34 +129,25 @@ function buildPlayerRow(i) {
   row.appendChild(modeWrap);
 
   // Difficulty only matters for a bot slot - kept as a second toggle
-  // group rather than folded into the Player/Bot one so both stay a
-  // simple two-state pick. Not shown at all (not just disabled) for a
+  // group rather than folded into the Player/Bot one so both stay
+  // simple pick-one groups. Not shown at all (not just disabled) for a
   // human slot, so it never eats row width when irrelevant.
   if (active && cfg.mode === "bot") {
     var diffWrap = document.createElement("div");
     diffWrap.className = "modeToggle diffToggle";
-    var medBtn = document.createElement("button");
-    medBtn.className = "modeBtn" + (cfg.aiLevel !== "hard" ? " active" : "");
-    medBtn.textContent = "Medium";
-    var hardBtn = document.createElement("button");
-    hardBtn.className = "modeBtn" + (cfg.aiLevel === "hard" ? " active" : "");
-    hardBtn.textContent = "Hard";
-    medBtn.addEventListener("pointerdown", function (e) {
-      e.preventDefault();
-      if (cfg.aiLevel !== "hard") return;
-      cfg.aiLevel = "medium";
-      savePlayerConfigs();
-      renderPlayerRows();
+    ["easy", "medium", "hard"].forEach(function (level) {
+      var btn = document.createElement("button");
+      btn.className = "modeBtn" + (cfg.aiLevel === level ? " active" : "");
+      btn.textContent = level[0].toUpperCase() + level.slice(1);
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        if (cfg.aiLevel === level) return;
+        cfg.aiLevel = level;
+        savePlayerConfigs();
+        renderPlayerRows();
+      });
+      diffWrap.appendChild(btn);
     });
-    hardBtn.addEventListener("pointerdown", function (e) {
-      e.preventDefault();
-      if (cfg.aiLevel === "hard") return;
-      cfg.aiLevel = "hard";
-      savePlayerConfigs();
-      renderPlayerRows();
-    });
-    diffWrap.appendChild(medBtn);
-    diffWrap.appendChild(hardBtn);
     row.appendChild(diffWrap);
   }
 

@@ -390,24 +390,42 @@ These came out of real back-and-forth with the user — don't casually
   re-running the bench to confirm hard bots are moving at all.
 - **Bot difficulty is one shared table, not per-level code paths -
   including the new adaptive behavior above.** (`AI_LEVELS` in
-  `constants.js`: `medium` and `hard`.) Every knob introduced by the
-  range/confidence/evade mechanics is a multiplier or a chance, and
-  `hard`'s aim knobs are tuned so the range/confidence ones are no-ops
-  (`rangeNoiseFloorMult`/`confidenceNoiseFloorMult` at `1`) while its
-  `aimStdDev` (45) stays tighter than medium's (90) - so hard is a
-  strictly more precise shooter than medium, expressed as data rather
-  than a second code path. `bot.js` never checks which level it's
-  running; only the table values differ. `evadeChance` is *not* zeroed
-  for hard - see the load-bearing note on evasive movement below for why
-  a static, purely-precise hard bot turned out to be the wrong call.
-  Each active player slot
-  picks its own level via `playerConfig.js` (a `Medium`/`Hard` toggle
-  shown only when that slot is set to Bot) - `p.aiLevel` lives on the
-  player object like `p.isBot`, read once in `tanks.js: newTank()` from
-  `store.gameConfig.players[idx].aiLevel`. Like the Player/Bot mode
-  toggle it sits next to, the difficulty choice does **not** persist
-  across a page reload (only name/color do) - that's intentional, not a
-  gap to fix, matching the existing mode toggle's behavior.
+  `constants.js`: `easy`, `medium`, `hard`.) Every knob introduced by the
+  range/confidence/evade mechanics is a multiplier or a chance, and each
+  level's `aimStdDev` is the thing that actually carries the difficulty
+  ladder (`easy` 180 → `medium` 90 → `hard` 45 - each roughly halves the
+  aim noise of the one before). `hard`'s range/confidence knobs are tuned
+  as no-ops (`rangeNoiseFloorMult`/`confidenceNoiseFloorMult` at `1`) so
+  it collapses to a flat Gaussian at its tight ceiling; `easy` and
+  `medium` share the same range/confidence/evade shape (300/1200/0.65/
+  120/0.75/0.6) - only the aim ceiling differs between them - so the
+  precision axis stays the one deliberate differentiator and the
+  adaptive-movement axis doesn't accidentally become a second one.
+  `bot.js` never checks which level it's running; only the table values
+  differ. `evadeChance` is *not* zeroed for hard (0.75, even higher than
+  medium/easy's 0.6) - see the load-bearing note on evasive movement
+  below for why a static, purely-precise hard bot turned out to be the
+  wrong call. Bench-measured ladder (`bench/run.js --matchup
+  easy:easy,medium:medium,hard:hard --matches 60`+): first-shot hit rate
+  15.0% / 31.0% / 54.0%, overall hit rate 17.5% / 27.3% / 41.7%, avg
+  turns-to-decide 17.2 / 11.7 / 8.0 - monotonic on every metric, which is
+  the bar a future 4th level should also clear before shipping. Each
+  active player slot picks its own level via `playerConfig.js` (an
+  Easy/Medium/Hard toggle, built by iterating `["easy", "medium",
+  "hard"]` so a new level is one array entry, shown only when that slot
+  is set to Bot) - `p.aiLevel` lives on the player object like `p.isBot`,
+  read once in `tanks.js: newTank()` from
+  `store.gameConfig.players[idx].aiLevel`. That read is a whitelist
+  against `AI_LEVELS` itself (`AI_LEVELS[cfg.aiLevel] ? cfg.aiLevel :
+  "medium"`), not a hardcoded string comparison - the `easy` level was
+  briefly a silent no-op (measuring identically to `medium`) because an
+  earlier version of this line only special-cased `"hard"` and treated
+  every other value, including `"easy"`, as `"medium"`. If you add a
+  level to `AI_LEVELS`, re-check this line still resolves it instead of
+  falling through. Like the Player/Bot mode toggle it sits next to, the
+  difficulty choice does **not** persist across a page reload (only
+  name/color do) - that's intentional, not a gap to fix, matching the
+  existing mode toggle's behavior.
 - **There's a headless simulation bench (`bench.html` + `bench/`) for
   tuning the bot AI with real numbers instead of eyeballing matches** -
   an internal tool Claude runs, not the user (see `bench/README.md`).
@@ -477,7 +495,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v14`). **Bump this version any time you change
+  (currently `party-tanks-v15`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -514,9 +532,13 @@ purpose:
   mostly a UI task.
 - **Bot/AI opponents**: player slots 3-7 are still visibly present but
   disabled (no >2-player support yet). Slots 0-1 support a real Bot
-  toggle plus a Medium/Hard difficulty toggle (`AI_LEVELS` in
-  `constants.js`) - see the load-bearing decisions above for how the two
-  levels differ and why adding a third is still just a new table entry.
+  toggle plus an Easy/Medium/Hard difficulty toggle (`AI_LEVELS` in
+  `constants.js`) - see the load-bearing decisions above for how the
+  levels differ. Adding a level is mostly a new table entry
+  (`playerConfig.js`'s toggle already builds its buttons by iterating
+  `["easy", "medium", "hard"]`, so a 4th key just needs adding to that
+  array) - but see the `tanks.js: newTank()` note below the `AI_LEVELS`
+  table decision for a whitelist gotcha that bit the `easy` addition.
 - **Tank type choice doesn't persist** across matches the way player
   name/color/wind level do - every match starts both players back at
   `newTank()`'s Trooper default and re-runs the full `tankSelect.js` flow.

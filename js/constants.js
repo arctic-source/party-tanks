@@ -194,17 +194,34 @@ export var AI_COARSE_POWER_STEPS = 15;
 export var AI_REFINE_STEPS = 10; // per-axis resolution of the refine pass around the coarse best
 export var AI_UNREACHABLE_THRESHOLD = 120; // px - beyond this miss distance at max effort, the bot drives closer instead of firing
 
-// Difficulty presets - one shared code path in bot.js for both; every
+// Difficulty presets - one shared code path in bot.js for all three; every
 // behavioral difference between them is a parameter value here, not a
-// branch. "hard" is deliberately tuned so every new medium-only knob is a
-// no-op (rangeNoiseFloorMult/confidenceNoiseFloorMult at 1 = no effect,
-// evadeChance at 0 = never triggers), which collapses it to exactly the
-// original flat-Gaussian, move-only-when-unreachable bot. "medium" turns
-// those same knobs on. See CLAUDE.md's load-bearing decisions for the
-// reasoning behind each knob - short version: aimStdDev/thinkDelay* are
-// unchanged from the original model; the range/confidence/evade knobs
-// are the new adaptive layer on top.
+// branch. "hard" is deliberately tuned so its range/confidence knobs are
+// no-ops (rangeNoiseFloorMult/confidenceNoiseFloorMult at 1 = no effect),
+// which collapses aim to exactly the original flat-Gaussian model - only
+// aimStdDev itself carries hard's extra precision. See CLAUDE.md's
+// load-bearing decisions for the reasoning behind each knob - short
+// version: aimStdDev/thinkDelay* are unchanged from the original model;
+// the range/confidence/evade knobs are an adaptive layer on top.
 export var AI_LEVELS = {
+  easy: {
+    aimStdDev: 180,            // 2x medium's ceiling. Bench-measured (bench/run.js --matchup
+    // easy:easy --matches 60): 15.0% first-shot hit rate, 17.5% overall, 17.2 turns/match,
+    // avg 4.66 shots to first hit - a clean step down from medium's 31.0%/27.3%/11.7/2.69 and
+    // hard's 54.0%/41.7%/8.0/1.65, so the three levels form a monotonic ladder on every metric.
+    // Re-measure the same way before retuning this.
+    thinkDelayMin: 0.5,
+    thinkDelayMax: 1.2,
+    rangeNearPx: 300,
+    rangeFarPx: 1200,
+    rangeNoiseFloorMult: 0.65, // same adaptive shape as medium - aimStdDev is what should carry
+    recalibrateDistPx: 120,    // the difficulty difference, not a different response to range/
+    confidenceNoiseFloorMult: 0.75, // confidence/threat, so these match medium's values.
+    evadeChance: 0.6,          // same as medium, for the same reason (see CLAUDE.md's note on
+    evadeTriggerDistPx: 180,   // why hard's evadeChance was raised rather than left at 0 - the
+    evadeDistMin: 40,          // point is a moving target regardless of aim tier).
+    evadeDistMax: 350
+  },
   medium: {
     aimStdDev: 90,             // px - stddev ceiling of the Gaussian-perturbed aim point around the opponent
     // Doubled from the original 45 after measuring real bot-vs-bot play

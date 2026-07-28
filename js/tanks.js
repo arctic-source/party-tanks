@@ -1,5 +1,5 @@
 import { store } from "./store.js";
-import { FUEL_MAX, POWER_MAX, TANK_TYPES } from "./constants.js";
+import { FUEL_MAX, POWER_MAX, TANK_TYPES, AI_LEVELS } from "./constants.js";
 import { ctx } from "./canvas.js";
 import { terrainHeightAt } from "./terrain.js";
 
@@ -53,7 +53,7 @@ export function newTank(idx) {
     color: cfg.color,
     colorDark: cfg.colorDark,
     isBot: !!cfg.isBot,
-    aiLevel: cfg.aiLevel === "hard" ? "hard" : "medium",
+    aiLevel: AI_LEVELS[cfg.aiLevel] ? cfg.aiLevel : "medium",
     aiMemory: { hasFired: false, lastOpponentX: null },
     alive: true,
     selected: false
