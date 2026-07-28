@@ -36,16 +36,35 @@ export function fire() {
 // caller via main.js's hitTest(), since it depends on that tank's own
 // hitHalfWidth/hitHeight. Damage dealt uses the SHOOTER's own min/max
 // damage (an attacker trait), not the defender's.
-export function resolveImpact(x, y, hitTank, t) {
+//
+// reason is optional ("scenery"/"offworld"/"terrain"/"self"/"defender",
+// passed by each of main.js's five call sites) and unused by the real
+// game - it exists only so bench/benchRunner.js's window.__BENCH__ hook
+// below can tell apart the three cases that already pass hitTank: null
+// (scenery/offworld/terrain), which are otherwise indistinguishable from
+// outside this function. See CLAUDE.md's load-bearing decision on the
+// simulation bench for why this guard pattern is safe to leave in place.
+export function resolveImpact(x, y, hitTank, t, reason) {
   var dmg = null;
+  var shooter = store.players[store.active];
   if (hitTank) {
-    var shooter = store.players[store.active];
     var tt = Math.max(0, Math.min(1, t || 0));
     dmg = Math.round(shooter.maxDamage - (shooter.maxDamage - shooter.minDamage) * tt);
     hitTank.health = Math.max(0, hitTank.health - dmg);
     if (hitTank === shooter) {
       showToast("💥 " + hitTank.name + " caught themselves in the blast for " + dmg + " damage!");
     }
+  }
+  if (window.__BENCH__ && window.__BENCH__.pendingShot) {
+    var defender = store.players[1 - store.active];
+    window.__BENCH__.pendingShot.landingX = x;
+    window.__BENCH__.pendingShot.landingY = y;
+    window.__BENCH__.pendingShot.missDistance = Math.abs(x - defender.x);
+    window.__BENCH__.pendingShot.hitOpponent = hitTank === defender;
+    window.__BENCH__.pendingShot.hitSelf = hitTank === shooter;
+    window.__BENCH__.pendingShot.damage = dmg;
+    window.__BENCH__.pendingShot.reason = reason || null;
+    window.__BENCH__.pendingShot = null;
   }
   store.impactFlash = { x: x, y: y, t: 0.5, damageText: dmg };
   store.lastImpact[store.active] = { x: x, y: y, hitTank: !!hitTank };

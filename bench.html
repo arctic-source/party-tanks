@@ -1,0 +1,152 @@
+<!--
+  Internal dev tool - NOT part of the shipped game. Not linked from
+  index.html, not in sw.js's precache list. See bench/README.md.
+
+  This is a straight copy of index.html's DOM structure (same element
+  IDs) plus one extra script tag for bench/benchRunner.js. It has to stay
+  structurally in sync with index.html because js/main.js, js/ui.js,
+  js/combat.js and js/tankSelect.js all touch these specific IDs
+  unconditionally while driving a match - see CLAUDE.md's load-bearing
+  decision on the simulation bench.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Party Tanks — Bench (internal tool, not shipped)</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <div id="screenWelcome" class="screen show">
+    <h1 class="titleLogo">Party Tanks</h1>
+    <button id="newGameBtn" class="bigBtn">New Game</button>
+  </div>
+
+  <div id="screenPlayers" class="screen">
+    <h2 class="screenTitle">Players</h2>
+    <div id="playerRows" class="playerRows"></div>
+    <div class="screenNav">
+      <button id="playersNextBtn" class="bigBtn">Next</button>
+    </div>
+  </div>
+
+  <div id="screenRounds" class="screen">
+    <h2 class="screenTitle">Rounds &amp; Map</h2>
+    <div class="configRows">
+      <div class="configRow">
+        <div class="configLabel">ROUNDS</div>
+        <div class="chipSelector">
+          <button class="chipArrow" disabled>&#9664;</button>
+          <div class="chipValue">1</div>
+          <button class="chipArrow" disabled>&#9654;</button>
+        </div>
+      </div>
+      <div class="configRow">
+        <div class="configLabel">MAP</div>
+        <div class="chipSelector">
+          <button class="chipArrow" id="mapArrowLeftBtn">&#9664;</button>
+          <div class="chipValue" id="mapValueDisplay">Chill Forest</div>
+          <button class="chipArrow" id="mapArrowRightBtn">&#9654;</button>
+        </div>
+      </div>
+      <div class="configRow">
+        <div class="configLabel">WIND</div>
+        <div class="chipSelector">
+          <button class="chipArrow" id="windArrowLeftBtn">&#9664;</button>
+          <div class="chipValue" id="windValueDisplay">Light</div>
+          <button class="chipArrow" id="windArrowRightBtn">&#9654;</button>
+        </div>
+      </div>
+    </div>
+    <div class="screenNav">
+      <button id="roundsBackBtn" class="bigBtn secondary">Back</button>
+      <button id="startGameBtn" class="bigBtn">Start Game</button>
+    </div>
+  </div>
+
+  <div id="screenMatch" class="screen">
+    <div id="bar">
+      <button class="ctl wideCtl" id="fsBtn" aria-label="Toggle fullscreen">
+        <svg id="fsIcon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 9V4h5"></path><path d="M20 9V4h-5"></path><path d="M4 15v5h5"></path><path d="M20 15v5h-5"></path>
+        </svg>
+        <span id="fsLabel">Fullscreen</span>
+      </button>
+      <div class="cluster">
+        <div class="grp">
+          <div class="grp-label">MOVE</div>
+          <div class="pair">
+            <button class="ctl" id="btnLeft" aria-label="Move left">&#9664;</button>
+            <button class="ctl" id="btnRight" aria-label="Move right">&#9654;</button>
+          </div>
+        </div>
+        <div class="grp">
+          <div class="grp-label">WIND</div>
+          <div class="windReadout">
+            <span id="windArrow" class="windArrowChar">&ndash;</span>
+            <b id="windPct">Calm</b>
+          </div>
+        </div>
+      </div>
+
+      <div id="status">
+        <div id="turnLabel">Player 1's Turn</div>
+        <div class="fuelWrap"><div id="fuelFill"></div></div>
+      </div>
+
+      <div class="cluster">
+        <div class="grp">
+          <div class="grp-label">ANGLE <b id="angleVal">55</b>&deg;</div>
+          <div class="pair">
+            <button class="ctl" id="btnAngleLeft">&#9664;</button>
+            <button class="ctl" id="btnAngleRight">&#9654;</button>
+          </div>
+        </div>
+        <div class="grp">
+          <div class="grp-label">POWER <b id="powerVal">55</b></div>
+          <div class="pair">
+            <button class="ctl" id="btnPowerDown">&minus;</button>
+            <button class="ctl" id="btnPowerUp">&plus;</button>
+          </div>
+        </div>
+        <button class="ctl wideCtl" id="recenterBtn" aria-label="Recenter camera on your tank">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle>
+            <circle cx="12" cy="12" r="7"></circle>
+            <line x1="12" y1="1" x2="12" y2="4"></line>
+            <line x1="12" y1="20" x2="12" y2="23"></line>
+            <line x1="1" y1="12" x2="4" y2="12"></line>
+            <line x1="20" y1="12" x2="23" y2="12"></line>
+          </svg>
+          <span>Recenter</span>
+        </button>
+        <button class="ctl" id="fireBtn" aria-label="Fire">FIRE</button>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <canvas id="c"></canvas>
+      <div id="toast"></div>
+      <div id="overlay">
+        <h1 id="winText">Player 1 Wins!</h1>
+        <button id="backToSetupBtn">Back to Setup</button>
+      </div>
+      <div id="tankSelectOverlay">
+        <div class="tsHeader">
+          <span id="tsHeaderText">Player 1: choose your tank</span>
+        </div>
+        <div id="tsTileList" class="tsTileList"></div>
+        <div class="tsFooter">
+          <button id="tsConfirmBtn" class="bigBtn" disabled>Select a tank</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+<script type="module" src="bench/benchRunner.js"></script>
+</body>
+</html>

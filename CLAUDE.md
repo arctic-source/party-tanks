@@ -17,6 +17,12 @@ files deployed straight from this repo via GitHub Pages.
 index.html        markup only — links styles.css, boots js/main.js
 styles.css         all styling (control bar, pre-game screens, canvas)
 sw.js              PWA service worker (network-first cache)
+bench.html         internal dev tool entry point — NOT linked from
+                   index.html, NOT in sw.js's precache list. See
+                   bench/README.md and the load-bearing decision below.
+bench/             AI-tuning simulation bench (Claude runs this, not the
+                   user) — benchRunner.js (in-page driver), run.js
+                   (Playwright CLI), analyze.js (stats), README.md
 js/
   store.js         shared MUTABLE state — see "The store pattern" below
   constants.js     tunable numbers/tables, never reassigned at runtime
@@ -383,6 +389,27 @@ These came out of real back-and-forth with the user — don't casually
   toggle it sits next to, the difficulty choice does **not** persist
   across a page reload (only name/color do) - that's intentional, not a
   gap to fix, matching the existing mode toggle's behavior.
+- **There's a headless simulation bench (`bench.html` + `bench/`) for
+  tuning the bot AI with real numbers instead of eyeballing matches** -
+  an internal tool Claude runs, not the user (see `bench/README.md`).
+  It drives the *actual* `main.js: startMatch()`/`update()` (both now
+  exported for exactly this reason) directly - no reimplemented physics
+  or AI - so results reflect the real game. Speed comes from two
+  sources, neither of which is a simplification of the simulation
+  itself: real `setTimeout` pacing (tank-select reveal delays) is
+  patched to fire on the next tick for the batch's duration, and matches
+  are driven by calling `update(dt)` in a tight loop with a `dt` the
+  bench chooses (small during `"flight"` for physics accuracy, larger
+  while only a countdown timer is ticking) instead of real
+  `requestAnimationFrame` time. `js/bot.js` and `js/combat.js` each
+  contain a couple of `if (window.__BENCH__) ...` hooks that log
+  per-shot/per-move data - `window.__BENCH__` is only ever defined by
+  `bench/benchRunner.js`, which only `bench.html` loads, so these are
+  true no-ops (one `if` check) for every real player on `index.html`.
+  Don't strip them as dead code, and don't move the actual decision
+  logic they read (distance, memory/confidence state, the evade dice
+  roll) into the hooks themselves - they only ever read values the
+  surrounding function already computed for its own purposes.
 
 ## Conventions
 
@@ -431,7 +458,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v13`). **Bump this version any time you change
+  (currently `party-tanks-v14`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

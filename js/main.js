@@ -37,7 +37,10 @@ function computeArenaLayout() {
   store.playerStartXs = xs;
 }
 
-function startMatch() {
+// Exported (nothing in the real app imports from main.js today - it's the
+// root module) so bench/benchRunner.js can drive a full match headlessly,
+// without going through requestAnimationFrame or the pre-game screens.
+export function startMatch() {
   store.activeMap = MAPS[store.mapIndex];
   computeArenaLayout();
   generateTerrain();
@@ -172,7 +175,10 @@ function hitTest(bullet, tank) {
 }
 
 // ---------- Update loop ----------
-function update(dt) {
+// Exported for bench/benchRunner.js, which calls this directly in a tight
+// loop with a dt it chooses itself (instead of real elapsed rAF time) -
+// see CLAUDE.md's load-bearing decision on the simulation bench.
+export function update(dt) {
   if (store.state === "aim") {
     var p = store.players[store.active];
     if (p.isBot) {
@@ -261,15 +267,15 @@ function update(dt) {
         hitItem.state = "burning";
         hitItem.burnTurnsLeft = BURN_TURNS;
       }
-      resolveImpact(bullet.x, bullet.y, null);
+      resolveImpact(bullet.x, bullet.y, null, null, "scenery");
     } else if (bullet.x < 0 || bullet.x > store.WORLD_W) {
-      resolveImpact(bullet.x, bullet.y, null);
+      resolveImpact(bullet.x, bullet.y, null, null, "offworld");
     } else if (selfT !== null) {
-      resolveImpact(bullet.x, bullet.y, shooter, selfT);
+      resolveImpact(bullet.x, bullet.y, shooter, selfT, "self");
     } else if (defT !== null) {
-      resolveImpact(bullet.x, bullet.y, defender, defT);
+      resolveImpact(bullet.x, bullet.y, defender, defT, "defender");
     } else if (bullet.y >= terrainHeightAt(bullet.x)) {
-      resolveImpact(bullet.x, terrainHeightAt(bullet.x), null);
+      resolveImpact(bullet.x, terrainHeightAt(bullet.x), null, null, "terrain");
     }
   } else if (store.state === "resolve") {
     store.impactFlash.t -= dt;

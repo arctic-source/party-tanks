@@ -136,6 +136,14 @@ function beginAimAndWait() {
   var opp = store.players[1 - store.active];
   var level = levelFor(p);
 
+  // Captured before computeAimStdDev mutates anything, purely for the
+  // window.__BENCH__ hook below - see CLAUDE.md's load-bearing decision
+  // on the simulation bench for why this guard is safe to leave in real
+  // builds (window.__BENCH__ is undefined outside bench.html).
+  var distance = Math.abs(opp.x - p.x);
+  var hadMemory = p.aiMemory.hasFired;
+  var movedSinceLastShot = hadMemory ? Math.abs(opp.x - p.aiMemory.lastOpponentX) : null;
+
   var stdDev = computeAimStdDev(level, p, opp);
   var targetX = opp.x + gaussianRandom(0, stdDev);
   targetX = Math.max(0, Math.min(store.WORLD_W, targetX));
@@ -146,6 +154,14 @@ function beginAimAndWait() {
 
   p.aiMemory.hasFired = true;
   p.aiMemory.lastOpponentX = opp.x;
+
+  if (window.__BENCH__) {
+    window.__BENCH__.logShot({
+      shooterIdx: p.idx, shooterAiLevel: p.aiLevel, shooterTankType: p.tankType,
+      defenderTankType: opp.tankType, distance: distance, hadMemory: hadMemory,
+      movedSinceLastShot: movedSinceLastShot, stdDev: stdDev, angle: p.angle, power: p.power
+    });
+  }
 
   store.bot.waitTimer = randRange(level.thinkDelayMin, level.thinkDelayMax);
   store.bot.moveTimer = null;
@@ -165,7 +181,21 @@ function startBotTurn() {
   // below; on "hard" evadeChance is 0 so this branch never fires.
   var oppLastShot = store.lastImpact[opp.idx];
   var underThreat = oppLastShot && Math.abs(oppLastShot.x - p.x) <= level.evadeTriggerDistPx;
-  if (underThreat && p.fuel > 0 && Math.random() < level.evadeChance) {
+
+  // evadeRoll/evadeSucceeded are only ever computed inside this same
+  // underThreat-&&-fuel guard, exactly matching the original inline
+  // `Math.random() < level.evadeChance` short-circuit - purely a
+  // refactor to let the window.__BENCH__ hook below see the roll, not a
+  // behavior change (Math.random() is still called in exactly the same
+  // circumstances, so the PRNG sequence the rest of the match sees is
+  // unaffected).
+  var evadeRoll = null, evadeSucceeded = false;
+  if (underThreat && p.fuel > 0) {
+    evadeRoll = Math.random();
+    evadeSucceeded = evadeRoll < level.evadeChance;
+  }
+
+  if (evadeSucceeded) {
     // Squared-uniform sample: most rolls land near evadeDistMin, with an
     // occasional roll toward evadeDistMax - "usually a bit, sometimes
     // a lot more" instead of a flat or symmetric spread.
@@ -176,6 +206,12 @@ function startBotTurn() {
     store.held.right = oppLastShot.x < p.x;
     store.bot.moveTimer = dist / p.moveSpeed;
     store.bot.phase = "moving";
+    if (window.__BENCH__) {
+      window.__BENCH__.logMove({
+        botIdx: p.idx, aiLevel: p.aiLevel, kind: "evade",
+        underThreat: true, evadeRoll: evadeRoll, plannedDist: dist
+      });
+    }
     return;
   }
 
@@ -189,7 +225,19 @@ function startBotTurn() {
     store.held.right = opp.x > p.x;
     store.bot.moveTimer = null;
     store.bot.phase = "moving";
+    if (window.__BENCH__) {
+      window.__BENCH__.logMove({
+        botIdx: p.idx, aiLevel: p.aiLevel, kind: "unreachable",
+        underThreat: underThreat, evadeRoll: evadeRoll, feasibleDist: feasible.dist
+      });
+    }
   } else {
+    if (window.__BENCH__) {
+      window.__BENCH__.logMove({
+        botIdx: p.idx, aiLevel: p.aiLevel, kind: "none",
+        underThreat: underThreat, evadeRoll: evadeRoll, feasibleDist: feasible.dist
+      });
+    }
     beginAimAndWait();
   }
 }
