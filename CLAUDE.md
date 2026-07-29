@@ -37,9 +37,18 @@ js/
                    MAPS/SCENERY_TYPES in constants.js
   background.js    sky gradient (per-map colors), parallax background
                    layers (mountains or pyramids, per map), clouds
-  tanks.js         tank type stats/art (TANK_TYPES-driven body drawers,
-                   supply-crate-until-selected, wreckage art + smoke/spark
-                   particles once eliminated, bullet/flash/impact marks)
+  tanks.js         tank lifecycle/stats (newTank, applyTankType,
+                   closestAliveOpponent) + drawTank()'s crate/live/wrecked
+                   dispatch — the tank as a game-state concept, not pixels
+  tankArt.js       pure body art: neutral palette, per-type vector body
+                   drawers (TANK_TYPES-driven), supply crate, tank-select
+                   preview — no gameplay state, sits below tanks.js
+  wreckage.js      everything about a destroyed tank: wrecked-body damage
+                   decals, ongoing smoke/spark particles, and the 3-kind
+                   elimination explosion (EXPLOSION_KINDS) — sits on
+                   tankArt.js, below tanks.js
+  projectiles.js   bullet-in-flight + impact-moment rendering (drawBullet/
+                   drawFlash/drawImpactMarks) — a leaf, no tank dependency
   combat.js        fire(), resolveImpact(), scenery-fire damage, turn resolution
   playerConfig.js  pre-game screens, player name/color + wind/map config persistence
   ui.js            turn/fuel/aim HUD text, per-player theming, toasts,
@@ -53,10 +62,13 @@ js/
 ```
 
 Dependency direction is roughly: `store`/`constants`/`utils` (leaves) →
-`canvas` → `camera`/`terrain` → `scenery`/`tanks`/`background` →
-`combat`/`playerConfig`/`ui` → `bot`/`tankSelect` → `main` (root, imports
-everything, has no exports). Keep new code flowing in this direction —
-e.g. `terrain.js` should never import from `combat.js`.
+`canvas` → `camera`/`terrain` → `scenery`/`tankArt`/`projectiles`/`background`
+→ `wreckage` (depends on `tankArt`) → `tanks` (depends on `tankArt` +
+`wreckage`) → `combat`/`playerConfig`/`ui` → `bot`/`tankSelect` → `main`
+(root, imports everything, has no exports). Keep new code flowing in this
+direction — e.g. `terrain.js` should never import from `combat.js`, and
+`tankArt.js`/`wreckage.js` should never import from `tanks.js` (it's the
+other way around — see the tank-module-split decision below).
 
 ### The store pattern
 
@@ -712,6 +724,48 @@ These came out of real back-and-forth with the user — don't casually
   order) rather than assuming a fixed winning slot. Don't reintroduce
   position-based win-rate reporting without re-deriving why it silently
   broke here.
+- **`tanks.js` was split into `tanks.js`/`tankArt.js`/`wreckage.js`/
+  `projectiles.js` once it grew into a god-file** (over 1000 lines,
+  covering stats, three tank types' body art, wreck damage art, a 3-kind
+  explosion particle system, and bullet/flash/impact rendering all at
+  once) - this was a pure refactor with no behavior change, done
+  proactively (not in response to a bug) because every new visual feature
+  kept landing in the same file and making the next one slower to place.
+  The split follows the dependency-direction rule above, one-directional,
+  no cycles: `tankArt.js` is a leaf (palette, per-type vector body
+  drawers, `BODY_DRAWERS`, `getBodyDrawer()`, `drawSupplyCrate`,
+  `drawTankPreview` - only depends on `store`/`constants`/`canvas`/
+  `terrain`); `wreckage.js` sits on top of it (imports `NEUTRAL_DARK`/
+  `NEUTRAL_SILVER`/`getBodyDrawer` from `tankArt.js` for the wrecked-body
+  pass, owns `drawWreckedTank`/`initWreck`/`spawnExplosion`/
+  `updateWreckEffects`/`drawWreckEffects`); `tanks.js` sits on top of
+  both (imports `findType`/`drawBarrelShape`/`drawSupplyCrate`/
+  `getBodyDrawer` from `tankArt.js` and `drawWreckedTank` from
+  `wreckage.js`, keeps `applyTankType`/`newTank`/`closestAliveOpponent`/
+  `drawTank`'s crate-vs-live-vs-wrecked dispatch - the tank as a
+  game-state concept, not its pixels). `projectiles.js` split out
+  separately as a true leaf (`drawBullet`/`drawFlash`/`drawImpactMarks`,
+  only depends on `store`/`canvas`) since bullet/impact rendering isn't a
+  tank concept at all - it was only ever in `tanks.js` because that's
+  where drawing helpers had accumulated. `getBodyDrawer(typeKey)` is new
+  (`tankArt.js`) - it centralizes the `BODY_DRAWERS[key] || drawTrooperBody`
+  fallback that used to be hand-repeated at each of `drawTank()`/
+  `drawWreckedTank()`/`drawTankPreview()`'s call sites; don't reintroduce
+  the inline fallback pattern at a new call site, import this instead.
+  `findType()` (TANK_TYPES lookup) lives in `tankArt.js`, not `tanks.js`,
+  specifically so `tankArt.js` never needs to import from `tanks.js` -
+  `tanks.js: applyTankType()` imports it from there instead; putting
+  `findType()` in `tanks.js` would create a cycle the first time
+  `tankArt.js`'s `drawTankPreview()` needed it too. `rocketPod()` (a
+  drawing helper with no remaining caller anywhere in the codebase) was
+  deleted rather than moved, since a refactor is the right time to drop
+  dead code, not carry it into a new file. Per-feature manual Playwright
+  smoke testing (see "Testing workflow" below) is still the only
+  regression check for this project - deliberately no automated test
+  suite - so this split was verified the same way any other feature is:
+  one-time scripted runs (tank-select preview render, a live shot fired,
+  all 3 explosion kinds forced, a full real-time 4-player match), not a
+  committed test file.
 
 ## Conventions
 
@@ -760,7 +814,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v23`). **Bump this version any time you change
+  (currently `party-tanks-v24`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

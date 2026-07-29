@@ -2,7 +2,8 @@ import { store } from "./store.js";
 import { TANK_TYPES, WIND_LEVELS, FUEL_MAX, TANK_SELECT_BOT_LOOK_MS, TANK_SELECT_REVEAL_DELAY_MS } from "./constants.js";
 import { randRange } from "./utils.js";
 import { centerCameraOnActive, centerCameraOnActiveOffset } from "./camera.js";
-import { applyTankType, drawTankPreview } from "./tanks.js";
+import { applyTankType } from "./tanks.js";
+import { drawTankPreview } from "./tankArt.js";
 import { applyPlayerTheme, updateTurnUI, updateWindUI, showToast } from "./ui.js";
 
 // Wind is constant for the whole round (currently the whole match, since
