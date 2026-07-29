@@ -300,13 +300,20 @@ export function update(dt) {
     }
   } else if (store.state === "eliminated") {
     // Camera-held beat on a kill (afterResolve() snapped it onto the
-    // dying tank and spawned its explosion) - the wreck's own explosion
-    // burst and ongoing smoke/sparks keep animating via the unconditional
-    // updateWreckEffects() loop above regardless of this state; once the
-    // hold expires, finishTurn() runs the win-check/turn-advance that a
-    // non-kill resolve would have run immediately.
+    // dying tank, punched the zoom in, and spawned its explosion) - the
+    // wreck's own explosion burst and ongoing smoke/sparks keep animating
+    // via the unconditional updateWreckEffects() loop above regardless of
+    // this state; once the hold expires, restore the pre-punch-in zoom
+    // (re-clamping position for it, since finishTurn()'s win-overlay
+    // branch doesn't otherwise touch the camera at all) and hand off to
+    // finishTurn() for the win-check/turn-advance a non-kill resolve
+    // would have run immediately.
     store.eliminationTimer -= dt;
-    if (store.eliminationTimer <= 0) finishTurn();
+    if (store.eliminationTimer <= 0) {
+      store.camZoom = store.eliminationPrevZoom;
+      clampCam();
+      finishTurn();
+    }
   }
 }
 

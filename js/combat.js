@@ -1,7 +1,7 @@
 import { store } from "./store.js";
 import {
   POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, SCENERY_FIRE_RADIUS, SCENERY_FIRE_DAMAGE, FUEL_MAX,
-  ELIMINATION_HOLD_TIME
+  ELIMINATION_HOLD_TIME, ELIMINATION_ZOOM
 } from "./constants.js";
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive, clampCam } from "./camera.js";
@@ -131,6 +131,12 @@ export function afterResolve() {
   if (newlyEliminated.length > 0) {
     newlyEliminated.forEach(spawnExplosion);
     var focus = newlyEliminated[0];
+    // Punch in close for the hold, restored by main.js once it ends -
+    // Math.max so a player already zoomed in past ELIMINATION_ZOOM never
+    // gets zoomed OUT for the "close-up." Set zoom before clampCam() since
+    // its position clamping depends on the current zoom.
+    store.eliminationPrevZoom = store.camZoom;
+    store.camZoom = Math.max(store.camZoom, ELIMINATION_ZOOM);
     store.camCenterX = focus.x;
     store.camCenterY = terrainHeightAt(focus.x) - focus.hitHeight * 0.6;
     clampCam();

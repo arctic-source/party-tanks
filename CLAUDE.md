@@ -596,6 +596,22 @@ These came out of real back-and-forth with the user — don't casually
   only ever focuses the first - showing two explosions in two places at
   once isn't something a single camera can do, and picking one is
   simpler than inventing a multi-target framing rule nobody asked for.
+  The hold also punches `camZoom` in close (`ELIMINATION_ZOOM = ZOOM_MAX
+  * 0.9`, "almost to the max") the same instant the camera snaps to the
+  kill - `store.eliminationPrevZoom` captures whatever zoom the player
+  had *before* the punch-in, and `main.js: update()`'s `"eliminated"`
+  branch restores exactly that value (then re-`clampCam()`s, since
+  `finishTurn()`'s win-overlay branch doesn't otherwise touch the camera
+  at all) the instant the hold timer runs out - never a fixed "zoom back
+  to 1.0," which would be visibly wrong if the player had already been
+  zoomed in or out before the kill. The punch-in itself uses
+  `Math.max(store.camZoom, ELIMINATION_ZOOM)` rather than a hard
+  overwrite, so a player already zoomed in *past* `ELIMINATION_ZOOM`
+  never gets zoomed *out* for the close-up - the eventual restore still
+  correctly returns to their real prior zoom either way, since that was
+  captured before the `Math.max`, not after. Like the position snap, this
+  is an instant cut, not a tweened zoom - there's no camera-tweening
+  mechanism anywhere else in this codebase to be consistent with.
 - **Bots always target whichever alive opponent is currently closest** -
   `tanks.js: closestAliveOpponent(p)`, a plain linear scan, is the one
   targeting rule at every difficulty level (no per-level variance was
@@ -677,7 +693,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v20`). **Bump this version any time you change
+  (currently `party-tanks-v21`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

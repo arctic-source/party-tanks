@@ -294,6 +294,7 @@ export var WRECK_SPARK_MAX = 5; // safety cap on concurrent sparks per wreck
 // particles (spawnExplosion(), folded into updateWreckEffects()/
 // drawWreckEffects() alongside the ongoing wreck smoke/sparks above).
 export var ELIMINATION_HOLD_TIME = 1.8; // seconds the camera stays locked on the kill before handing off to the next turn
+export var ELIMINATION_ZOOM = ZOOM_MAX * 0.9; // "almost to the max" punch-in for the hold, restored to whatever camZoom was beforehand once it ends
 export var EXPLOSION_FLASH_TIME = 0.3;
 export var EXPLOSION_SMOKE_COUNT = 7;
 export var EXPLOSION_SMOKE_LIFE_MIN = 0.7, EXPLOSION_SMOKE_LIFE_MAX = 1.3;
