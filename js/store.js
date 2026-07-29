@@ -31,10 +31,11 @@ export var store = {
   matchActive: false,
   players: null,
   active: 0,
-  state: "aim", // aim | flight | resolve | gameover
+  state: "aim", // aim | flight | resolve | eliminated | gameover
   bullet: null,
   impactFlash: null, // {x, y, t, damageText}
   lastImpact: [null, null], // per-player last shot landing spot {x, y, hitTank}
+  eliminationTimer: 0, // seconds left camera-locked on a just-eliminated tank (state === "eliminated") - see combat.js: afterResolve()/finishTurn()
 
   // Wind: constant for the whole round (currently the whole match, since
   // rounds are locked to 1). Signed magnitude in [-1, 1] - sign is

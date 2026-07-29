@@ -285,3 +285,18 @@ export var WRECK_SMOKE_MAX = 14; // safety cap on concurrent puffs per wreck
 export var WRECK_SPARK_INTERVAL_MIN = 0.06, WRECK_SPARK_INTERVAL_MAX = 0.18;
 export var WRECK_SPARK_LIFE_MIN = 0.15, WRECK_SPARK_LIFE_MAX = 0.35;
 export var WRECK_SPARK_MAX = 5; // safety cap on concurrent sparks per wreck
+
+// ---------- Elimination explosion ----------
+// The one-time kill burst (flash + black smoke + falling debris pixels)
+// plus the camera-hold beat around it. See CLAUDE.md's load-bearing
+// decision on the elimination sequence; combat.js/main.js drive the
+// state machine (store.state === "eliminated"), tanks.js owns the burst
+// particles (spawnExplosion(), folded into updateWreckEffects()/
+// drawWreckEffects() alongside the ongoing wreck smoke/sparks above).
+export var ELIMINATION_HOLD_TIME = 1.8; // seconds the camera stays locked on the kill before handing off to the next turn
+export var EXPLOSION_FLASH_TIME = 0.3;
+export var EXPLOSION_SMOKE_COUNT = 7;
+export var EXPLOSION_SMOKE_LIFE_MIN = 0.7, EXPLOSION_SMOKE_LIFE_MAX = 1.3;
+export var EXPLOSION_DEBRIS_COUNT = 14;
+export var EXPLOSION_DEBRIS_LIFE_MIN = 0.9, EXPLOSION_DEBRIS_LIFE_MAX = 1.6;
+export var EXPLOSION_DEBRIS_GRAVITY = 220; // px/s^2 - independent of the bullet's GRAVITY so it's tunable separately

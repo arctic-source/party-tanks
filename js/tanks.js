@@ -3,7 +3,9 @@ import {
   FUEL_MAX, POWER_MAX, TANK_TYPES, AI_LEVELS,
   WRECK_SMOKE_INTERVAL_MIN, WRECK_SMOKE_INTERVAL_MAX, WRECK_SMOKE_LIFE_MIN, WRECK_SMOKE_LIFE_MAX,
   WRECK_SMOKE_RISE_SPEED, WRECK_SMOKE_MAX,
-  WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX, WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX, WRECK_SPARK_MAX
+  WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX, WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX, WRECK_SPARK_MAX,
+  EXPLOSION_FLASH_TIME, EXPLOSION_SMOKE_COUNT, EXPLOSION_SMOKE_LIFE_MIN, EXPLOSION_SMOKE_LIFE_MAX,
+  EXPLOSION_DEBRIS_COUNT, EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX, EXPLOSION_DEBRIS_GRAVITY
 } from "./constants.js";
 import { ctx } from "./canvas.js";
 import { terrainHeightAt } from "./terrain.js";
@@ -606,7 +608,41 @@ function drawWreckedTank(p) {
 // Called exactly once, from combat.js: afterResolve() the instant a tank
 // is eliminated. Purely cosmetic state - no gameplay effect.
 export function initWreck(p) {
-  p.wreck = { smoke: [], sparks: [], smokeTimer: 0, sparkTimer: 0 };
+  p.wreck = { smoke: [], sparks: [], smokeTimer: 0, sparkTimer: 0, explosion: null };
+}
+
+// The one-time kill burst - flash, a handful of big black smoke puffs
+// that billow outward, and small black debris "pixels" that launch out
+// and fall under their own gravity until they hit the ground and settle.
+// Called once, from combat.js: afterResolve(), right after initWreck() -
+// separate from the ongoing wreck smoke/sparks above (which start empty
+// and build up gradually; this is a sudden burst that fades out on its
+// own and leaves p.wreck.explosion null again once it has).
+export function spawnExplosion(p) {
+  if (!p.wreck) initWreck(p);
+  var smoke = [];
+  for (var i = 0; i < EXPLOSION_SMOKE_COUNT; i++) {
+    var ang = randRange(0, Math.PI * 2);
+    var spd = randRange(20, 55);
+    var life = randRange(EXPLOSION_SMOKE_LIFE_MIN, EXPLOSION_SMOKE_LIFE_MAX);
+    smoke.push({
+      x: randRange(-6, 6), y: randRange(-10, 0),
+      vx: Math.cos(ang) * spd * 0.4, vy: -Math.abs(Math.sin(ang) * spd) - 15,
+      r: randRange(6, 10), life: life, maxLife: life
+    });
+  }
+  var debris = [];
+  for (var j = 0; j < EXPLOSION_DEBRIS_COUNT; j++) {
+    var a2 = randRange(0, Math.PI * 2);
+    var s2 = randRange(40, 110);
+    var life2 = randRange(EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX);
+    debris.push({
+      x: 0, y: -p.hitHeight * 0.4,
+      vx: Math.cos(a2) * s2, vy: -Math.abs(Math.sin(a2) * s2) - 30,
+      life: life2, maxLife: life2, landed: false
+    });
+  }
+  p.wreck.explosion = { flashT: EXPLOSION_FLASH_TIME, smoke: smoke, debris: debris };
 }
 
 // Called every frame for every eliminated tank regardless of game state
@@ -655,6 +691,39 @@ export function updateWreckEffects(p, dt) {
     s.y += s.vy * dt;
     return s.life > 0;
   });
+
+  if (w.explosion) {
+    var ex = w.explosion;
+    ex.flashT = Math.max(0, ex.flashT - dt);
+
+    ex.smoke.forEach(function (s) {
+      s.life -= dt;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy += 40 * dt; // billow decelerates/settles rather than rising forever
+      s.r += dt * 10;
+    });
+    ex.smoke = ex.smoke.filter(function (s) { return s.life > 0; });
+
+    // Same ground-relative origin drawWreckEffects() anchors everything
+    // to (terrainHeightAt(p.x) - hitHeight*0.55) - so "the ground" in
+    // this local frame is +hitHeight*0.55 below that origin.
+    var groundOffsetY = p.hitHeight * 0.55;
+    ex.debris.forEach(function (d) {
+      d.life -= dt;
+      if (!d.landed) {
+        d.vy += EXPLOSION_DEBRIS_GRAVITY * dt;
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+        if (d.y >= groundOffsetY) { d.y = groundOffsetY; d.landed = true; d.vx = 0; d.vy = 0; }
+      }
+    });
+    ex.debris = ex.debris.filter(function (d) { return d.life > 0; });
+
+    if (ex.flashT <= 0 && ex.smoke.length === 0 && ex.debris.length === 0) {
+      w.explosion = null;
+    }
+  }
 }
 
 // Drawn in world space (no ctx.scale(dir,1) needed - smoke/sparks are
@@ -691,6 +760,38 @@ export function drawWreckEffects(p) {
     ctx.fill();
     ctx.restore();
   });
+
+  if (w.explosion) {
+    var ex = w.explosion;
+    if (ex.flashT > 0) {
+      var ft = ex.flashT / EXPLOSION_FLASH_TIME;
+      ctx.save();
+      ctx.globalAlpha = ft;
+      ctx.fillStyle = "#fff3c4";
+      ctx.beginPath();
+      ctx.arc(originX, originY, 10 + (1 - ft) * 40, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ex.smoke.forEach(function (s) {
+      var t = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.globalAlpha = t * 0.7;
+      ctx.fillStyle = "#111214";
+      ctx.beginPath();
+      ctx.arc(originX + s.x, originY + s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ex.debris.forEach(function (d) {
+      var t = Math.max(0, d.life / d.maxLife);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, t * 1.5);
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(originX + d.x - 1.5, originY + d.y - 1.5, 3, 3);
+      ctx.restore();
+    });
+  }
 }
 
 // A crate sits at each unselected player's starting position - "boxes on

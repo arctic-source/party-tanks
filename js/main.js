@@ -16,7 +16,7 @@ import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, scen
 import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks, updateWreckEffects, drawWreckEffects } from "./tanks.js";
-import { fire, resolveImpact, afterResolve } from "./combat.js";
+import { fire, resolveImpact, afterResolve, finishTurn } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame, activePlayerCount } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
 import { runBot } from "./bot.js";
@@ -298,6 +298,15 @@ export function update(dt) {
       store.impactFlash = null;
       afterResolve();
     }
+  } else if (store.state === "eliminated") {
+    // Camera-held beat on a kill (afterResolve() snapped it onto the
+    // dying tank and spawned its explosion) - the wreck's own explosion
+    // burst and ongoing smoke/sparks keep animating via the unconditional
+    // updateWreckEffects() loop above regardless of this state; once the
+    // hold expires, finishTurn() runs the win-check/turn-advance that a
+    // non-kill resolve would have run immediately.
+    store.eliminationTimer -= dt;
+    if (store.eliminationTimer <= 0) finishTurn();
   }
 }
 

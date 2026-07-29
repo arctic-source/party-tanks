@@ -1,11 +1,12 @@
 import { store } from "./store.js";
 import {
-  POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, SCENERY_FIRE_RADIUS, SCENERY_FIRE_DAMAGE, FUEL_MAX
+  POWER_TO_SPEED, CRATER_RADIUS, CRATER_DEPTH, SCENERY_FIRE_RADIUS, SCENERY_FIRE_DAMAGE, FUEL_MAX,
+  ELIMINATION_HOLD_TIME
 } from "./constants.js";
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
-import { centerCameraOnActive } from "./camera.js";
+import { centerCameraOnActive, clampCam } from "./camera.js";
 import { updateTurnUI, showToast } from "./ui.js";
-import { closestAliveOpponent, initWreck } from "./tanks.js";
+import { closestAliveOpponent, initWreck, spawnExplosion } from "./tanks.js";
 
 // Spawns at the barrel tip rather than a fixed offset from the tank body,
 // using the same pivot point + direction vector drawTank() draws the
@@ -109,14 +110,43 @@ export function afterResolve() {
   // rather than being removed. Usually at most one player crosses this
   // per resolve (a single bullet only ever hits one tank), but burning-
   // scenery damage above can finish off more than one at once.
+  var newlyEliminated = [];
   store.players.forEach(function (p) {
     if (p.alive && p.health <= 0) {
       p.alive = false;
       initWreck(p);
+      newlyEliminated.push(p);
       showToast("💥 " + p.name + " eliminated!");
     }
   });
 
+  // A kill gets its own camera-held beat (explosion, then a moment to
+  // actually see the wreck) before finishTurn() runs the win-check/turn-
+  // advance that would otherwise happen immediately - see CLAUDE.md's
+  // load-bearing decision on the elimination sequence. Focus the camera
+  // on whichever eliminated tank happened to be first (the actual target
+  // of this shot, in the overwhelmingly common single-kill case); a rare
+  // simultaneous multi-kill still bursts every one of them, just doesn't
+  // try to show the camera two places at once.
+  if (newlyEliminated.length > 0) {
+    newlyEliminated.forEach(spawnExplosion);
+    var focus = newlyEliminated[0];
+    store.camCenterX = focus.x;
+    store.camCenterY = terrainHeightAt(focus.x) - focus.hitHeight * 0.6;
+    clampCam();
+    store.eliminationTimer = ELIMINATION_HOLD_TIME;
+    store.state = "eliminated";
+    return;
+  }
+
+  finishTurn();
+}
+
+// The part of resolving a shot that decides "does the match end, or whose
+// turn is it now" - split out from afterResolve() so a kill can insert
+// the elimination camera-hold (main.js: update()'s "eliminated" branch)
+// between the two without duplicating the win-check/turn-advance logic.
+export function finishTurn() {
   var survivors = store.players.filter(function (p) { return p.alive; });
   if (survivors.length <= 1) {
     // survivors.length === 0 is a rare simultaneous-elimination edge case

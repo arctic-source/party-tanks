@@ -66,7 +66,10 @@ function beginPan(id) {
 }
 
 export function onPointerDown(e) {
-  if (store.state === "gameover" || store.state === "select") return;
+  // Also blocked during "eliminated" - the camera is deliberately locked
+  // on a just-destroyed tank for that beat (combat.js: afterResolve()),
+  // and a stray pan/pinch shouldn't be able to fight that framing.
+  if (store.state === "gameover" || store.state === "select" || store.state === "eliminated") return;
   store.activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
   var ids = pointerIds();
   if (ids.length === 2) {
