@@ -160,7 +160,7 @@ function buildPlayerRow(i) {
   return row;
 }
 
-function activePlayerCount() {
+export function activePlayerCount() {
   var n = 0;
   for (var i = 0; i < ACTIVE_SLOTS; i++) {
     if (store.playerConfigs[i].mode !== "off") n++;

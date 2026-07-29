@@ -17,7 +17,7 @@ import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
-import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame } from "./playerConfig.js";
+import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame, activePlayerCount } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
 import { runBot } from "./bot.js";
 import { beginTankSelection, confirmTankSelection } from "./tankSelect.js";
@@ -112,6 +112,11 @@ document.getElementById("newGameBtn").addEventListener("pointerdown", function (
 });
 document.getElementById("playersNextBtn").addEventListener("pointerdown", function (e) {
   e.preventDefault();
+  // Belt-and-suspenders alongside playersNextBtn's own disabled state
+  // (renderPlayerRows()): Start Game gets the same active-player-count
+  // check the moment we navigate to it, so a match can't be started with
+  // fewer than 2 participants regardless of how this screen was reached.
+  document.getElementById("startGameBtn").disabled = activePlayerCount() < 2;
   showScreen("screenRounds");
 });
 document.getElementById("roundsBackBtn").addEventListener("pointerdown", function (e) {
@@ -322,6 +327,16 @@ function frame(t) {
 
 function beginMatchFromConfig() {
   applyPlayerConfigToGame();
+  // Hard stop, not just a disabled button: whatever screen/route got us
+  // here, a match with fewer than 2 participants can't actually play
+  // (afterResolve()'s win-check assumes at least 2) - it would start into
+  // an empty, un-interactive world instead of erroring loudly. Bounce
+  // back to setup rather than let that happen.
+  if (store.gameConfig.players.length < 2) {
+    showToast("Need at least 2 players to start a match.");
+    showScreen("screenPlayers");
+    return;
+  }
   showScreen("screenMatch");
   resizeCanvas();
   store.matchActive = true;

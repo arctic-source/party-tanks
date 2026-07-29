@@ -1,4 +1,4 @@
-var CACHE_NAME = "party-tanks-v17";
+var CACHE_NAME = "party-tanks-v18";
 var ASSETS = [
   "./",
   "./index.html",
