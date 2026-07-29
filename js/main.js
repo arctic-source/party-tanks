@@ -4,7 +4,7 @@ import {
   GRAVITY, WIND_MAX_ACCEL,
   ANGLE_MIN, ANGLE_MAX, ANGLE_RATE, POWER_MIN, POWER_MAX, POWER_RATE,
   SCENERY_TYPES, BURN_TURNS,
-  SELF_DAMAGE_GRACE
+  SELF_DAMAGE_GRACE, ELIMINATION_HOLD_TIME
 } from "./constants.js";
 import { ctx, canvasWrap, resizeCanvas } from "./canvas.js";
 import {
@@ -15,7 +15,7 @@ import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
 import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, sceneryHitAt } from "./scenery.js";
 import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
-import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks, updateWreckEffects, drawWreckEffects } from "./tanks.js";
+import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks, updateWreckEffects, drawWreckEffects, spawnExplosion } from "./tanks.js";
 import { fire, resolveImpact, afterResolve, finishTurn } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame, activePlayerCount } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
@@ -299,20 +299,31 @@ export function update(dt) {
       afterResolve();
     }
   } else if (store.state === "eliminated") {
-    // Camera-held beat on a kill (afterResolve() snapped it onto the
-    // dying tank, punched the zoom in, and spawned its explosion) - the
-    // wreck's own explosion burst and ongoing smoke/sparks keep animating
-    // via the unconditional updateWreckEffects() loop above regardless of
-    // this state; once the hold expires, restore the pre-punch-in zoom
-    // (re-clamping position for it, since finishTurn()'s win-overlay
-    // branch doesn't otherwise touch the camera at all) and hand off to
-    // finishTurn() for the win-check/turn-advance a non-kill resolve
-    // would have run immediately.
+    // Camera-held beat on a kill (afterResolve() already snapped the
+    // camera onto the dying tank and punched the zoom in) - split into two
+    // sub-phases so the punch-in actually registers before anything blows
+    // up. "pause": camera sits zoomed in on the tank, nothing happening
+    // yet. Once it elapses, spawn the explosion for every pending kill and
+    // switch to "hold", which just waits ELIMINATION_HOLD_TIME more so the
+    // player can see the blast/wreck before the pre-punch-in zoom is
+    // restored (re-clamping position for it, since finishTurn()'s win-
+    // overlay branch doesn't otherwise touch the camera at all) and control
+    // hands off to finishTurn() for the win-check/turn-advance a non-kill
+    // resolve would have run immediately. The wreck's own explosion burst
+    // and ongoing smoke/sparks, once spawned, keep animating via the
+    // unconditional updateWreckEffects() loop above regardless of phase.
     store.eliminationTimer -= dt;
     if (store.eliminationTimer <= 0) {
-      store.camZoom = store.eliminationPrevZoom;
-      clampCam();
-      finishTurn();
+      if (store.eliminationPhase === "pause") {
+        store.pendingEliminated.forEach(spawnExplosion);
+        store.pendingEliminated = [];
+        store.eliminationPhase = "hold";
+        store.eliminationTimer = ELIMINATION_HOLD_TIME;
+      } else {
+        store.camZoom = store.eliminationPrevZoom;
+        clampCam();
+        finishTurn();
+      }
     }
   }
 }

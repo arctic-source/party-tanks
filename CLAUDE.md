@@ -571,40 +571,56 @@ These came out of real back-and-forth with the user — don't casually
   `store.state === "eliminated"` inserted between `"resolve"` and the
   next `"aim"`.** `combat.js: afterResolve()` still does the elimination
   bookkeeping (`p.alive = false`, `initWreck()`, the toast) exactly as
-  before, but if anything was newly eliminated it now calls
-  `tanks.js: spawnExplosion()` on each of them, hard-snaps the camera
-  onto the first one (`store.camCenterX/Y` set directly + `clampCam()` -
-  no tweened pan, consistent with every other camera-center call in this
-  codebase), sets `store.eliminationTimer = ELIMINATION_HOLD_TIME`, and
-  returns *without* running the win-check/turn-advance that used to
-  happen immediately - that logic was split out into a separate exported
-  `finishTurn()` instead. `main.js: update()` gates a new `"eliminated"`
-  branch that just counts `store.eliminationTimer` down and calls
-  `finishTurn()` once it hits zero - `updateWreckEffects()` (see above)
-  already runs unconditionally for every `!p.alive` tank regardless of
-  `store.state`, so the explosion burst and the ongoing wreck smoke/
-  sparks keep animating through this state for free, no separate driving
-  code needed. `camera.js: onPointerDown()` also blocks pan/pinch during
-  `"eliminated"`, alongside the existing `gameover`/`select` guards, so a
-  stray touch can't fight the forced framing. If the kill also ends the
+  before, hard-snaps the camera onto the first newly-eliminated tank
+  (`store.camCenterX/Y` set directly + `clampCam()` - no tweened pan,
+  consistent with every other camera-center call in this codebase) and
+  punches `camZoom` in close (`ELIMINATION_ZOOM = ZOOM_MAX * 0.9`,
+  "almost to the max") the same instant, then returns *without* running
+  the win-check/turn-advance that used to happen immediately - that logic
+  was split out into a separate exported `finishTurn()` instead. The hold
+  itself is **two sub-phases, not one**, both driven by the same
+  `store.eliminationTimer` countdown in `main.js: update()`'s
+  `"eliminated"` branch: `"pause"` (`ELIMINATION_PRE_EXPLOSION_DELAY`,
+  ~0.45s) holds the camera zoomed in on the tank with nothing happening
+  yet - long enough for the punch-in itself to register as "look here"
+  before anything blows up - then `"hold"` (`ELIMINATION_HOLD_TIME`,
+  1.8s) is what actually spawns the explosion (`tanks.js:
+  spawnExplosion()`, called from `main.js`, not `afterResolve()`) and
+  waits before handing off. This was a deliberate fix for the zoom and
+  the explosion both landing on the same frame, which read as one
+  simultaneous event rather than "camera finds the tank, THEN it blows
+  up." Which tank(s) are still waiting on their explosion lives in
+  `store.pendingEliminated` (set by `afterResolve()`, drained by
+  `main.js` the instant `"pause"` elapses) rather than calling
+  `spawnExplosion()` eagerly and hoping something reads `p.wreck.explosion`
+  later - don't call `spawnExplosion()` from `afterResolve()` again
+  without re-deriving why that collapses the two beats back into one.
+  `main.js: update()`'s `"eliminated"` branch calls `finishTurn()` only
+  once the `"hold"` phase's timer also elapses - `updateWreckEffects()`
+  (see above) already runs unconditionally for every `!p.alive` tank
+  regardless of `store.state`, so once spawned, the explosion burst and
+  the ongoing wreck smoke/sparks keep animating through the rest of this
+  state for free, no separate driving code needed. `camera.js:
+  onPointerDown()` also blocks pan/pinch during `"eliminated"`, alongside
+  the existing `gameover`/`select` guards, so a stray touch can't fight
+  the forced framing during either sub-phase. If the kill also ends the
   match, `finishTurn()`'s win branch shows the overlay *without*
   re-centering the camera - it deliberately stays on the fatal shot
   rather than panning away right before "X Wins!" appears; only the
   continue-the-match branch calls `centerCameraOnActive()` to hand off to
-  whoever's turn is next. `spawnExplosion()` bursts *every* newly-
-  eliminated tank (rare simultaneous multi-kills included) but the camera
-  only ever focuses the first - showing two explosions in two places at
-  once isn't something a single camera can do, and picking one is
-  simpler than inventing a multi-target framing rule nobody asked for.
-  The hold also punches `camZoom` in close (`ELIMINATION_ZOOM = ZOOM_MAX
-  * 0.9`, "almost to the max") the same instant the camera snaps to the
-  kill - `store.eliminationPrevZoom` captures whatever zoom the player
-  had *before* the punch-in, and `main.js: update()`'s `"eliminated"`
-  branch restores exactly that value (then re-`clampCam()`s, since
+  whoever's turn is next. `spawnExplosion()` bursts *every* tank in
+  `store.pendingEliminated` at once (rare simultaneous multi-kills
+  included) but the camera only ever focused the first, back in
+  `afterResolve()` - showing two explosions in two places at once isn't
+  something a single camera can do, and picking one is simpler than
+  inventing a multi-target framing rule nobody asked for.
+  `store.eliminationPrevZoom` captures whatever zoom the player had
+  *before* the punch-in (set once, in `afterResolve()`), and `main.js:
+  update()` restores exactly that value (then re-`clampCam()`s, since
   `finishTurn()`'s win-overlay branch doesn't otherwise touch the camera
-  at all) the instant the hold timer runs out - never a fixed "zoom back
-  to 1.0," which would be visibly wrong if the player had already been
-  zoomed in or out before the kill. The punch-in itself uses
+  at all) the instant the `"hold"` phase's timer runs out - never a fixed
+  "zoom back to 1.0," which would be visibly wrong if the player had
+  already been zoomed in or out before the kill. The punch-in itself uses
   `Math.max(store.camZoom, ELIMINATION_ZOOM)` rather than a hard
   overwrite, so a player already zoomed in *past* `ELIMINATION_ZOOM`
   never gets zoomed *out* for the close-up - the eventual restore still
@@ -693,7 +709,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v21`). **Bump this version any time you change
+  (currently `party-tanks-v22`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

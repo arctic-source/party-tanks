@@ -35,7 +35,9 @@ export var store = {
   bullet: null,
   impactFlash: null, // {x, y, t, damageText}
   lastImpact: [null, null], // per-player last shot landing spot {x, y, hitTank}
-  eliminationTimer: 0, // seconds left camera-locked on a just-eliminated tank (state === "eliminated") - see combat.js: afterResolve()/finishTurn()
+  eliminationTimer: 0, // seconds left in the current eliminationPhase (state === "eliminated") - see combat.js: afterResolve()/finishTurn()
+  eliminationPhase: null, // null | "pause" (zoomed in, nothing happening yet) | "hold" (explosion has been spawned, camera stays put)
+  pendingEliminated: [], // tanks awaiting their spawnExplosion() call, held back until the "pause" phase elapses
   eliminationPrevZoom: 1, // camZoom captured right before the elimination punch-in, restored by main.js when the hold ends
 
   // Wind: constant for the whole round (currently the whole match, since

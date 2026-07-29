@@ -293,7 +293,8 @@ export var WRECK_SPARK_MAX = 5; // safety cap on concurrent sparks per wreck
 // state machine (store.state === "eliminated"), tanks.js owns the burst
 // particles (spawnExplosion(), folded into updateWreckEffects()/
 // drawWreckEffects() alongside the ongoing wreck smoke/sparks above).
-export var ELIMINATION_HOLD_TIME = 1.8; // seconds the camera stays locked on the kill before handing off to the next turn
+export var ELIMINATION_PRE_EXPLOSION_DELAY = 0.45; // seconds the camera holds zoomed-in on the tank, nothing happening yet, before the explosion actually starts
+export var ELIMINATION_HOLD_TIME = 1.8; // seconds the camera stays locked on the wreck AFTER the explosion starts, before handing off to the next turn
 export var ELIMINATION_ZOOM = ZOOM_MAX * 0.9; // "almost to the max" punch-in for the hold, restored to whatever camZoom was beforehand once it ends
 export var EXPLOSION_FLASH_TIME = 0.3;
 export var EXPLOSION_SMOKE_COUNT = 7;
