@@ -21,8 +21,10 @@ function printHelp() {
   console.log(`
 Usage: node bench/run.js [options]
 
-  --matchup <p1:p2,p1:p2,...>   Comma-separated aiLevel matchups.
-                                  Valid levels: easy, medium, hard. Default: medium:medium
+  --matchup <lvl:lvl[:lvl[:lvl]],...>   Comma-separated matchups, each
+                                  2-4 colon-separated aiLevels (one per
+                                  bot in that free-for-all). Valid
+                                  levels: easy, medium, hard. Default: medium:medium
   --matches <N>                  Matches per matchup. Default: 60
   --map <chillForest|desert|random>   Default: random
   --wind <none|light|strong|random>   Default: random
@@ -35,6 +37,8 @@ Usage: node bench/run.js [options]
 Examples:
   node bench/run.js --matchup medium:medium --matches 60
   node bench/run.js --matchup easy:easy,medium:medium,hard:hard --matches 40 --seed 42
+  node bench/run.js --matchup medium:medium:hard --matches 60
+  node bench/run.js --matchup easy:medium:hard:hard --matches 40
 `);
 }
 
@@ -71,10 +75,12 @@ function startServer(root) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const matchups = args.matchup.split(',').map((pair) => {
-    const [p1, p2] = pair.split(':');
-    if (!p1 || !p2) throw new Error('Bad --matchup entry: "' + pair + '" (expected p1:p2)');
-    return { p1, p2 };
+  const matchups = args.matchup.split(',').map((entry) => {
+    const levels = entry.split(':').filter(Boolean);
+    if (levels.length < 2 || levels.length > 4) {
+      throw new Error('Bad --matchup entry: "' + entry + '" (expected 2-4 colon-separated aiLevels)');
+    }
+    return { levels };
   });
 
   const outPath = args.out || path.join(os.tmpdir(), `party-tanks-bench-${Date.now()}.jsonl`);

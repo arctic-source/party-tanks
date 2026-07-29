@@ -143,8 +143,8 @@ function finishTankSelection() {
 }
 
 function advanceOrFinish() {
-  if (store.active === 0) {
-    store.active = 1;
+  store.active++;
+  if (store.active < store.players.length) {
     startSelectionTurn();
   } else {
     finishTankSelection();

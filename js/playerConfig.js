@@ -11,7 +11,11 @@ export function showScreen(id) {
 function defaultPlayerConfigs() {
   var arr = [];
   for (var i = 0; i < PLAYER_SLOTS; i++) {
-    arr.push({ name: "Player " + (i + 1), colorIndex: i % COLOR_PALETTE.length, mode: "human", aiLevel: "medium" });
+    // Slots 0-1 default to Human (today's 2-player default, unchanged);
+    // slots 2-3 (newly active under ACTIVE_SLOTS=4) default to Off so
+    // existing setups aren't surprised by two extra live players - a 3rd
+    // or 4th player is opt-in.
+    arr.push({ name: "Player " + (i + 1), colorIndex: i % COLOR_PALETTE.length, mode: i < 2 ? "human" : "off", aiLevel: "medium" });
   }
   return arr;
 }
@@ -40,28 +44,35 @@ function savePlayerConfigs() {
 
 store.playerConfigs = loadPlayerConfigs();
 
-function otherActiveColorIndex(i) {
-  return store.playerConfigs[i === 0 ? 1 : 0].colorIndex;
+// Every OTHER active-slot row (0..ACTIVE_SLOTS-1, excluding i) always
+// reserves its own color, regardless of that slot's Human/Bot/Off mode -
+// same unconditional-reservation behavior the old 2-slot version had,
+// just checked against up to 3 other slots instead of 1.
+function takenColorIndices(i) {
+  var taken = [];
+  for (var j = 0; j < ACTIVE_SLOTS; j++) {
+    if (j !== i) taken.push(store.playerConfigs[j].colorIndex);
+  }
+  return taken;
 }
 
 export function renderSwatchesForSlot(i) {
   var wrap = document.getElementById("swatches" + i);
   if (!wrap) return;
   wrap.innerHTML = "";
-  var takenByOther = i < ACTIVE_SLOTS ? otherActiveColorIndex(i) : -1;
+  var taken = i < ACTIVE_SLOTS ? takenColorIndices(i) : [];
   COLOR_PALETTE.forEach(function (c, j) {
     var btn = document.createElement("button");
     btn.className = "swatchBtn" + (store.playerConfigs[i].colorIndex === j ? " selected" : "");
     btn.style.background = c.body;
-    btn.disabled = (j === takenByOther);
+    btn.disabled = (taken.indexOf(j) !== -1);
     btn.setAttribute("aria-label", c.name);
     btn.addEventListener("pointerdown", function (e) {
       e.preventDefault();
       if (btn.disabled) return;
       store.playerConfigs[i].colorIndex = j;
       savePlayerConfigs();
-      renderSwatchesForSlot(0);
-      renderSwatchesForSlot(1);
+      for (var k = 0; k < ACTIVE_SLOTS; k++) renderSwatchesForSlot(k);
     });
     wrap.appendChild(btn);
   });
@@ -98,34 +109,29 @@ function buildPlayerRow(i) {
   swatchWrap.id = "swatches" + i;
   row.appendChild(swatchWrap);
 
+  // Human / Bot / Off - a slot that's Off doesn't participate in the
+  // match at all, letting a match be anywhere from 2 to ACTIVE_SLOTS
+  // players. Built the same iterate-and-generate way the difficulty
+  // toggle below already is, rather than hand-writing each button.
   var modeWrap = document.createElement("div");
   modeWrap.className = "modeToggle";
-  var humanBtn = document.createElement("button");
-  humanBtn.className = "modeBtn" + (cfg.mode === "human" ? " active" : "");
-  humanBtn.textContent = "Player";
-  humanBtn.disabled = !active;
-  var botBtn = document.createElement("button");
-  botBtn.className = "modeBtn" + (cfg.mode === "bot" ? " active" : "");
-  botBtn.textContent = "Bot";
-  botBtn.disabled = !active;
-  if (active) {
-    humanBtn.addEventListener("pointerdown", function (e) {
-      e.preventDefault();
-      if (cfg.mode === "human") return;
-      cfg.mode = "human";
-      savePlayerConfigs();
-      renderPlayerRows();
-    });
-    botBtn.addEventListener("pointerdown", function (e) {
-      e.preventDefault();
-      if (cfg.mode === "bot") return;
-      cfg.mode = "bot";
-      savePlayerConfigs();
-      renderPlayerRows();
-    });
-  }
-  modeWrap.appendChild(humanBtn);
-  modeWrap.appendChild(botBtn);
+  var MODE_LABELS = { human: "Player", bot: "Bot", off: "Off" };
+  ["human", "bot", "off"].forEach(function (mode) {
+    var btn = document.createElement("button");
+    btn.className = "modeBtn" + (cfg.mode === mode ? " active" : "");
+    btn.textContent = MODE_LABELS[mode];
+    btn.disabled = !active;
+    if (active) {
+      btn.addEventListener("pointerdown", function (e) {
+        e.preventDefault();
+        if (cfg.mode === mode) return;
+        cfg.mode = mode;
+        savePlayerConfigs();
+        renderPlayerRows();
+      });
+    }
+    modeWrap.appendChild(btn);
+  });
   row.appendChild(modeWrap);
 
   // Difficulty only matters for a bot slot - kept as a second toggle
@@ -154,19 +160,32 @@ function buildPlayerRow(i) {
   return row;
 }
 
+function activePlayerCount() {
+  var n = 0;
+  for (var i = 0; i < ACTIVE_SLOTS; i++) {
+    if (store.playerConfigs[i].mode !== "off") n++;
+  }
+  return n;
+}
+
 export function renderPlayerRows() {
   var container = document.getElementById("playerRows");
   container.innerHTML = "";
   for (var i = 0; i < PLAYER_SLOTS; i++) container.appendChild(buildPlayerRow(i));
   for (var j = 0; j < ACTIVE_SLOTS; j++) renderSwatchesForSlot(j);
+  // A match needs at least 2 real participants - block advancing past the
+  // players screen with 0-1 (e.g. everyone but one slot switched Off).
+  var nextBtn = document.getElementById("playersNextBtn");
+  if (nextBtn) nextBtn.disabled = activePlayerCount() < 2;
 }
 
 export function applyPlayerConfigToGame() {
-  store.gameConfig.players = [0, 1].map(function (i) {
-    var cfg = store.playerConfigs[i];
-    var c = COLOR_PALETTE[cfg.colorIndex];
-    return { name: cfg.name, color: c.body, colorDark: c.dark, isBot: cfg.mode === "bot", aiLevel: cfg.aiLevel };
-  });
+  store.gameConfig.players = store.playerConfigs.slice(0, ACTIVE_SLOTS)
+    .filter(function (cfg) { return cfg.mode !== "off"; })
+    .map(function (cfg) {
+      var c = COLOR_PALETTE[cfg.colorIndex];
+      return { name: cfg.name, color: c.body, colorDark: c.dark, isBot: cfg.mode === "bot", aiLevel: cfg.aiLevel };
+    });
 }
 
 function loadWindLevelIndex() {

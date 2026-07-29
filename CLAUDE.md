@@ -1,9 +1,9 @@
 # Party Tanks
 
 A 2D pass-and-play tank artillery game, played in a mobile browser (landscape,
-fullscreen PWA). Two players share one phone, taking turns aiming and firing
-across procedurally generated terrain. No backend, no build step: static
-files deployed straight from this repo via GitHub Pages.
+fullscreen PWA). 2-4 players share one phone in a free-for-all, taking turns
+aiming and firing across procedurally generated terrain. No backend, no build
+step: static files deployed straight from this repo via GitHub Pages.
 
 - **Deploy branch**: `claude/tank-artillery-game-vfqtfj` — GitHub Pages serves
   directly from this branch. There is no separate build/publish step; whatever
@@ -170,7 +170,7 @@ These came out of real back-and-forth with the user — don't casually
   labeling issue. The fix scales the delta by the same `dir` used
   everywhere else (`p.angle -= ANGLE_RATE * dt * dir` for Right, `+=` for
   Left) so Right always visibly tilts the barrel tip toward screen-right
-  for both players, matching how the Move Left/Right buttons already
+  regardless of facing, matching how the Move Left/Right buttons already
   work in screen space. Don't revert to a flat, dir-independent delta
   without re-deriving why that reintroduces the mirrored-rotation
   confusion.
@@ -292,12 +292,14 @@ These came out of real back-and-forth with the user — don't casually
   generating the unused one is not worth the extra branch.
 - **Player config (names/colors) persists via `localStorage`**
   (`PLAYER_CONFIG_KEY` in `constants.js`), loaded once at module init in
-  `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` are editable; the rest
-  are locked placeholders for a future bot/more-players feature — that's
-  intentional, not a bug.
+  `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` (`4`) are editable;
+  the rest are locked placeholders for a future >4-player feature -
+  that's intentional, not a bug. Mode/difficulty are NOT persisted (only
+  name/color are, via the same localStorage blob) - see the N-player
+  load-bearing decision below for why that matters for the Off state.
 - **Wind is rolled once per round, not per shot.** (`store.wind`, a signed
   value in `[-1, 1]` — sign is direction, magnitude is strength — set by
-  `tankSelect.js: generateWind()`, called once both players have picked a
+  `tankSelect.js: generateWind()`, called once every player has picked a
   tank, not at `startMatch()` time - see the tank-selection decision
   below for why.) It only affects the
   bullet in flight (`bullet.vx += store.wind * WIND_MAX_ACCEL * dt`, next to
@@ -455,6 +457,106 @@ These came out of real back-and-forth with the user — don't casually
   logic they read (distance, memory/confidence state, the evade dice
   roll) into the hooks themselves - they only ever read values the
   surrounding function already computed for its own purposes.
+- **Matches support 2-4 players, free-for-all, still on one shared
+  device.** No networking, no teams - every active (non-Off) player
+  slot fights every other one, last tank standing wins.
+  `constants.js: ACTIVE_SLOTS` is `4`; each slot's mode is a 3-way
+  Human/Bot/Off toggle (`playerConfig.js: buildPlayerRow()`, built by
+  iterating `["human", "bot", "off"]` the same way the difficulty toggle
+  iterates its three levels) instead of the old 2-way Human/Bot. Slots
+  0-1 default to Human, slots 2-3 default to Off, so existing 2-player
+  setups are unaffected until a player opts a 3rd/4th slot in.
+  `applyPlayerConfigToGame()` filters out Off slots before building
+  `store.gameConfig.players`, so the rest of the engine only ever sees
+  the actual participants (2-4 of them) - nothing downstream needs to
+  know a slot system with gaps exists. `playerConfig.js: renderPlayerRows()`
+  disables the players screen's Next button below 2 active slots -
+  `afterResolve()`'s win-check assumes at least 2 participants and
+  would misbehave with 0-1.
+- **One random shuffle, done once at match start, decides BOTH starting
+  position AND turn order** - "going around the table": whoever ends up
+  leftmost also goes first, and it never reshuffles mid-match.
+  `main.js: startMatch()` calls `shuffleArray(store.gameConfig.players)`
+  (utils.js's new Fisher-Yates helper) right after `applyPlayerConfigToGame()`
+  has populated it and before `computeArenaLayout()`/`newTank()` run - so
+  `store.players[i]`/`store.playerStartXs[i]` end up in that shuffled
+  order with no separate "which config slot is which position" indirection
+  anywhere else in the codebase. `store.active` (whose turn it is) is
+  just a plain index into that same array, cycling `0..N-1` and skipping
+  eliminated players - see `combat.js: afterResolve()`. Don't reintroduce
+  a separate `turnOrder` array or a second, independent shuffle for
+  position vs. turn order - both were deliberately unified into the one
+  permutation after being asked about explicitly; a second shuffle would
+  let a tank end up firing from the opposite end of the arena from where
+  the turn order "logically" placed it, which reads as arbitrary rather
+  than "going around the table."
+- **Tank selection happens in that same shuffled order**, immediately
+  before real turns begin - `tankSelect.js: advanceOrFinish()` just
+  increments `store.active` and starts the next pick until it runs off
+  the end of `store.players`, then calls `finishTankSelection()`. This
+  reuses `store.active`/`store.players[store.active]` exactly the way
+  the rest of tank selection already did for 2 players - no new indexing
+  concept for picking vs. playing.
+- **Each tank's facing direction is decided once, at creation, from
+  which half of the arena it starts in - not from its index.**
+  (`tanks.js: newTank()`: `p.dir = startX <= store.WORLD_W / 2 ? 1 :
+  -1`, ties toward facing right.) This replaced a hardcoded `p.idx === 0
+  ? 1 : -1` that appeared in four places - `combat.js: fire()`,
+  `bot.js: simulateLanding()`, `main.js: update()`'s angle-button branch,
+  `tanks.js: drawTank()` - which only made sense when there were exactly
+  two players, one always "player 0." All four now just read the tank's
+  own `p.dir`. Facing never changes mid-match even if the tank
+  repositions - a dynamic "face your nearest threat" model was considered
+  and rejected as a bigger, less predictable change than needed.
+- **Elimination is permanent and visible, not a state that reverses.**
+  `p.alive` (present on every tank since `newTank()`, previously set but
+  never read) flips to `false` in `combat.js: afterResolve()` the instant
+  `p.health <= 0`, with a toast ("💥 Player X eliminated!"). An eliminated
+  tank stays on the field as wreckage - still drawn (`drawTank()` doesn't
+  check `alive` - a destroyed tank looks the same as a living one that
+  happens to be at 0 health, which is fine since it never gets another
+  turn), but excluded from hit-testing (`main.js: update()`'s flight
+  branch skips `!p.alive` tanks entirely, so bullets pass through
+  wreckage) and from the turn rotation (`afterResolve()`'s
+  `do { store.active = (store.active + 1) % store.players.length; }
+  while (!store.players[store.active].alive);`). The match ends the
+  instant `store.players.filter(p => p.alive).length <= 1` - most often
+  exactly 1 survivor (the winner), but 0 is possible (e.g. burning-scenery
+  damage finishing off the last two players in the same resolve) and is
+  shown as "Draw!" rather than crashing on an undefined winner.
+- **Bots always target whichever alive opponent is currently closest** -
+  `tanks.js: closestAliveOpponent(p)`, a plain linear scan, is the one
+  targeting rule at every difficulty level (no per-level variance was
+  added; precision remains the sole difficulty differentiator, per the
+  existing `AI_LEVELS` philosophy). It lives in `tanks.js` rather than
+  `bot.js` specifically so `combat.js`'s `window.__BENCH__` hook can also
+  import it (for bench miss-distance reporting) without creating a
+  circular import - `bot.js` already imports `fire` from `combat.js`, so
+  `combat.js` importing back from `bot.js` isn't an option. A bot's aim
+  memory (`p.aiMemory`) is keyed by opponent `idx`
+  (`{hasFired, lastOpponentX}` per opponent, created lazily) instead of
+  one flat pair, since the closest opponent can be a different player
+  turn to turn in a 3+ player match - switching targets no longer wipes
+  out confidence built up against someone the bot keeps coming back to.
+  The evasion trigger (`bot.js: startBotTurn()`) similarly scans every
+  alive opponent's `store.lastImpact` entry and reacts to whichever
+  lands closest, not just the current target's - a bot can be spooked by
+  someone it isn't about to aim at.
+- **The AI-tuning bench supports 2-4 player free-for-all batches.**
+  (`bench/benchRunner.js: setupPlayers(levels)` takes an array of 2-4
+  `aiLevel` strings instead of a fixed `{p1, p2}` pair; `bench/run.js`'s
+  `--matchup` flag accepts 2-4 colon-separated levels per matchup.)
+  Because `startMatch()` now shuffles player order for every match (see
+  above) - not something the bench works around, since it's the actual
+  gameplay feature - a match's `store.players[0]` is no longer reliably
+  "the first bot you configured." `bench/analyze.js`'s win-rate reporting
+  was changed to match: it groups by the configured aiLevel lineup (e.g.
+  "medium:medium:hard") and attributes each match's win to whichever
+  aiLevel actually won, joining `match_end.winnerIdx` back through that
+  match's `match_start.players` (recorded in the same post-shuffle
+  order) rather than assuming a fixed winning slot. Don't reintroduce
+  position-based win-rate reporting without re-deriving why it silently
+  broke here.
 
 ## Conventions
 
@@ -503,7 +605,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v16`). **Bump this version any time you change
+  (currently `party-tanks-v17`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
@@ -538,17 +640,19 @@ purpose:
   fixed at `1.0` — there's no Small/Large selector yet, though
   `computeArenaLayout()` already reads this constant so wiring one up is
   mostly a UI task.
-- **Bot/AI opponents**: player slots 3-7 are still visibly present but
-  disabled (no >2-player support yet). Slots 0-1 support a real Bot
-  toggle plus an Easy/Medium/Hard difficulty toggle (`AI_LEVELS` in
-  `constants.js`) - see the load-bearing decisions above for how the
-  levels differ. Adding a level is mostly a new table entry
-  (`playerConfig.js`'s toggle already builds its buttons by iterating
-  `["easy", "medium", "hard"]`, so a 4th key just needs adding to that
-  array) - but see the `tanks.js: newTank()` note below the `AI_LEVELS`
-  table decision for a whitelist gotcha that bit the `easy` addition.
+- **>4-player support**: player slots 5-7 are still visibly present but
+  disabled. Slots 0-3 (`ACTIVE_SLOTS`) each support a real Human/Bot/Off
+  toggle plus an Easy/Medium/Hard difficulty toggle when set to Bot
+  (`AI_LEVELS` in `constants.js`) - see the load-bearing decisions above
+  for how the levels differ, and the N-player free-for-all decision below
+  for how 2-4 players actually play together. Adding a level is mostly a
+  new table entry (`playerConfig.js`'s difficulty toggle already builds
+  its buttons by iterating `["easy", "medium", "hard"]`, so a 4th key
+  just needs adding to that array) - but see the `tanks.js: newTank()`
+  note below the `AI_LEVELS` table decision for a whitelist gotcha that
+  bit the `easy` addition.
 - **Tank type choice doesn't persist** across matches the way player
-  name/color/wind level do - every match starts both players back at
+  name/color/wind level do - every match starts every player back at
   `newTank()`'s Trooper default and re-runs the full `tankSelect.js` flow.
   Not an oversight; nothing has asked for a "remember my tank" shortcut
   yet, and picking is already a required, unskippable step every match.

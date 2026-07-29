@@ -34,21 +34,36 @@ console.log(`Matches: ${matchEnds.length} (${matchEnds.filter((m) => m.completed
 console.log(`Shots: ${shots.length}, Moves: ${moves.length}\n`);
 
 // ---------- Per-matchup outcomes ----------
+// Grouped by the configured aiLevel lineup (e.g. "medium:medium:hard").
+// Win rate is reported BY aiLevel, not by a fixed player slot - startMatch()
+// shuffles player order to decide position/turn order (see CLAUDE.md's
+// load-bearing decision on N-player matches), so "winnerIdx === 0" no
+// longer means "the first configured bot." Each match_end.winnerIdx is
+// joined back through that match's match_start.players (recorded in the
+// same post-shuffle order) to recover which aiLevel actually won.
 console.log('=== Match outcomes by matchup ===');
 const byMatchup = {};
 matchStarts.forEach((ms) => {
-  const key = ms.matchup.p1 + ' vs ' + ms.matchup.p2;
-  byMatchup[key] = byMatchup[key] || { matchIds: [], p1: ms.matchup.p1, p2: ms.matchup.p2 };
+  const key = ms.matchup.levels.join(':');
+  byMatchup[key] = byMatchup[key] || { matchIds: [], starts: {} };
   byMatchup[key].matchIds.push(ms.matchId);
+  byMatchup[key].starts[ms.matchId] = ms;
 });
 Object.keys(byMatchup).forEach((key) => {
   const info = byMatchup[key];
   const ends = matchEnds.filter((e) => info.matchIds.includes(e.matchId) && e.completed);
-  const p1Wins = ends.filter((e) => e.winnerIdx === 0).length;
-  const p2Wins = ends.filter((e) => e.winnerIdx === 1).length;
+  const winsByLevel = {};
+  let draws = 0;
+  ends.forEach((e) => {
+    if (e.winnerIdx == null) { draws++; return; }
+    const start = info.starts[e.matchId];
+    const level = (start.players[e.winnerIdx] || {}).aiLevel || 'unknown';
+    winsByLevel[level] = (winsByLevel[level] || 0) + 1;
+  });
   const avgTurns = ends.reduce((a, e) => a + e.turns, 0) / ends.length;
   const avgShots = ends.reduce((a, e) => a + e.totalShots, 0) / ends.length;
-  console.log(`${key}: N=${ends.length} | p1(${info.p1}) wins ${p1Wins} (${pct(p1Wins, ends.length)}), p2(${info.p2}) wins ${p2Wins} (${pct(p2Wins, ends.length)}) | avg turns=${avgTurns.toFixed(1)} avg shots=${avgShots.toFixed(1)}`);
+  const winsStr = Object.keys(winsByLevel).map((lvl) => `${lvl} won ${winsByLevel[lvl]} (${pct(winsByLevel[lvl], ends.length)})`).join(', ');
+  console.log(`${key}: N=${ends.length} | ${winsStr}${draws ? `, draws=${draws} (${pct(draws, ends.length)})` : ''} | avg turns=${avgTurns.toFixed(1)} avg shots=${avgShots.toFixed(1)}`);
 });
 
 // ---------- Shot precision ----------

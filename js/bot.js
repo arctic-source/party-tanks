@@ -9,6 +9,7 @@ import { terrainHeightAt } from "./terrain.js";
 import { sceneryHitAt } from "./scenery.js";
 import { randRange, gaussianRandom, lerp, stepBallistic } from "./utils.js";
 import { fire } from "./combat.js";
+import { closestAliveOpponent } from "./tanks.js";
 
 // Dry-run flight simulator - reuses the real "flight" physics main.js's
 // update() runs on store.bullet (utils.js: stepBallistic for gravity/wind
@@ -24,7 +25,7 @@ import { fire } from "./combat.js";
 // compares against a target x.
 function simulateLanding(shooter, angle, power) {
   var shooterX = shooter.x;
-  var dir = shooter.idx === 0 ? 1 : -1;
+  var dir = shooter.dir;
   var rad = angle * Math.PI / 180;
   var bx = Math.cos(rad) * dir;
   var by = -Math.sin(rad);
@@ -92,12 +93,17 @@ function levelFor(p) { return AI_LEVELS[p.aiLevel] || AI_LEVELS.medium; }
 //   - range: closer shots get a tighter floor (rangeNoiseFloorMult at
 //     rangeNearPx, no reduction at rangeFarPx+). Pure function of
 //     current positions, no memory involved.
-//   - confidence: how much the opponent has moved since THIS shooter's
-//     own last shot (p.aiMemory.lastOpponentX) - unmoved gets a tighter
-//     floor (confidenceNoiseFloorMult), moved past recalibrateDistPx
-//     resets fully back to the ceiling. A shooter's first shot of the
-//     match has no memory yet, so it always starts at the ceiling - the
-//     "first shot is exploratory" feel falls out of that for free.
+//   - confidence: how much THIS opponent has moved since THIS shooter's
+//     own last shot AT THIS OPPONENT (p.aiMemory[opp.idx].lastOpponentX) -
+//     unmoved gets a tighter floor (confidenceNoiseFloorMult), moved past
+//     recalibrateDistPx resets fully back to the ceiling. A shooter's
+//     first shot at a given opponent has no memory of THEM yet, so it
+//     always starts at the ceiling - the "first shot at someone new is
+//     exploratory" feel falls out of that for free. Memory is keyed per
+//     opponent (not one flat pair) since the bot always targets whoever's
+//     currently closest, which can be a different player turn to turn in
+//     a 3+ player match - switching targets shouldn't wipe out confidence
+//     built up against someone the bot keeps coming back to.
 // On "hard", rangeNoiseFloorMult/confidenceNoiseFloorMult are both 1, so
 // both multipliers are always 1 and this collapses to the original flat
 // aimStdDev - see constants.js: AI_LEVELS.
@@ -106,9 +112,9 @@ function computeAimStdDev(level, shooter, opp) {
   var rangeT = Math.max(0, Math.min(1, (distance - level.rangeNearPx) / (level.rangeFarPx - level.rangeNearPx)));
   var rangeMult = lerp(level.rangeNoiseFloorMult, 1, rangeT);
 
-  var mem = shooter.aiMemory;
+  var mem = shooter.aiMemory[opp.idx];
   var confidenceT = 0;
-  if (mem.hasFired) {
+  if (mem && mem.hasFired) {
     var moved = Math.abs(opp.x - mem.lastOpponentX);
     confidenceT = Math.max(0, 1 - moved / level.recalibrateDistPx);
   }
@@ -125,7 +131,7 @@ function computeAimStdDev(level, shooter, opp) {
 // the result directly, then starts the "thinking" pause before firing.
 function beginAimAndWait() {
   var p = store.players[store.active];
-  var opp = store.players[1 - store.active];
+  var opp = closestAliveOpponent(p);
   var level = levelFor(p);
 
   // Captured before computeAimStdDev mutates anything, purely for the
@@ -133,8 +139,9 @@ function beginAimAndWait() {
   // on the simulation bench for why this guard is safe to leave in real
   // builds (window.__BENCH__ is undefined outside bench.html).
   var distance = Math.abs(opp.x - p.x);
-  var hadMemory = p.aiMemory.hasFired;
-  var movedSinceLastShot = hadMemory ? Math.abs(opp.x - p.aiMemory.lastOpponentX) : null;
+  var mem = p.aiMemory[opp.idx];
+  var hadMemory = !!(mem && mem.hasFired);
+  var movedSinceLastShot = hadMemory ? Math.abs(opp.x - mem.lastOpponentX) : null;
 
   var stdDev = computeAimStdDev(level, p, opp);
   var targetX = opp.x + gaussianRandom(0, stdDev);
@@ -144,8 +151,7 @@ function beginAimAndWait() {
   p.angle = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, solution.angle));
   p.power = Math.max(POWER_MIN, Math.min(POWER_MAX, solution.power));
 
-  p.aiMemory.hasFired = true;
-  p.aiMemory.lastOpponentX = opp.x;
+  p.aiMemory[opp.idx] = { hasFired: true, lastOpponentX: opp.x };
 
   if (window.__BENCH__) {
     window.__BENCH__.logShot({
@@ -163,15 +169,24 @@ function beginAimAndWait() {
 function startBotTurn() {
   store.bot.active = true;
   var p = store.players[store.active];
-  var opp = store.players[1 - store.active];
+  var opp = closestAliveOpponent(p);
   var level = levelFor(p);
 
-  // Flee first, if the opponent's last shot landed close enough to feel
-  // dangerous - denies them an easy follow-up on a target that hasn't
-  // moved, the same reason a human player repositions after a near
-  // miss. Independent of (and checked before) the reachability drive
-  // below; on "hard" evadeChance is 0 so this branch never fires.
-  var oppLastShot = store.lastImpact[opp.idx];
+  // Flee first, if ANY alive opponent's last shot landed close enough to
+  // feel dangerous - not just the current closest target's. In a 3+
+  // player match the most recently threatening shot can come from
+  // someone this bot isn't even about to aim at. Denies whoever fired it
+  // an easy follow-up on a target that hasn't moved, the same reason a
+  // human player repositions after a near miss. Independent of (and
+  // checked before) the reachability drive below; on "hard" evadeChance
+  // is 0 so this branch never fires.
+  var oppLastShot = null;
+  for (var i = 0; i < store.players.length; i++) {
+    var o = store.players[i];
+    if (o === p || !o.alive) continue;
+    var imp = store.lastImpact[o.idx];
+    if (imp && (!oppLastShot || Math.abs(imp.x - p.x) < Math.abs(oppLastShot.x - p.x))) oppLastShot = imp;
+  }
   var underThreat = oppLastShot && Math.abs(oppLastShot.x - p.x) <= level.evadeTriggerDistPx;
 
   // evadeRoll/evadeSucceeded are only ever computed inside this same

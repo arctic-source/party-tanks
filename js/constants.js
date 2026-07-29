@@ -180,7 +180,7 @@ export var COLOR_PALETTE = [
   { name: "Pink", body: "#d1478f", dark: "#8a2e5c" }
 ];
 export var PLAYER_SLOTS = 7;
-export var ACTIVE_SLOTS = 2;
+export var ACTIVE_SLOTS = 4; // up to 4 players in a free-for-all; each slot is Human/Bot/Off
 export var PLAYER_CONFIG_KEY = "partytanks.players.v1";
 
 // ---------- Bot AI ----------

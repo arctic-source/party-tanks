@@ -193,6 +193,7 @@ canvas { display: block; width: 100%; height: 100%; background: #6f8fae; }
   background: #2a5d4a;
 }
 .bigBtn:active { background: #367a61; }
+.bigBtn:disabled { opacity: .35; }
 .bigBtn.secondary { background: #33394a; }
 .bigBtn.secondary:active { background: #4c5570; }
 

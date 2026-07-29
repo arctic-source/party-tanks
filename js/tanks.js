@@ -46,6 +46,11 @@ export function newTank(idx) {
   var p = {
     idx: idx,
     x: startX,
+    // Facing is decided once, here, from which half of the arena this
+    // tank starts in - left half faces right (dir=1), right half faces
+    // left (dir=-1); a tank exactly on the centerline ties toward facing
+    // right. Fixed for the whole match, even if the tank later moves.
+    dir: startX <= store.WORLD_W / 2 ? 1 : -1,
     angle: 55,
     power: 55,
     fuel: FUEL_MAX,
@@ -54,13 +59,36 @@ export function newTank(idx) {
     colorDark: cfg.colorDark,
     isBot: !!cfg.isBot,
     aiLevel: AI_LEVELS[cfg.aiLevel] ? cfg.aiLevel : "medium",
-    aiMemory: { hasFired: false, lastOpponentX: null },
-    alive: true,
+    // Keyed by opponent idx - {hasFired, lastOpponentX} per opponent, not
+    // one flat pair - since bot.js now targets whichever opponent is
+    // currently closest, which can change turn to turn in a 3+ player
+    // match. Entries are created lazily the first time this shooter aims
+    // at a given opponent (bot.js: computeAimStdDev/beginAimAndWait).
+    aiMemory: {},
+    alive: true, // flips false in combat.js: afterResolve() once health hits 0 - eliminated tanks stay on the field as wreckage but never act or block bullets again
     selected: false
   };
   applyTankType(p, "trooper"); // sensible default until the player actually picks
   p.fuel = FUEL_MAX;
   return p;
+}
+
+// Shared by bot.js (real targeting - bots always go for whoever's closest,
+// see CLAUDE.md's load-bearing decision on N-player matches) and
+// combat.js's window.__BENCH__ hook (measuring miss distance against a
+// sensible reference in a free-for-all). Lives here rather than in
+// bot.js/combat.js so both can import it without a circular dependency
+// (bot.js already imports from combat.js). Returns null if p has no alive
+// opponents (shouldn't happen mid-match - the match would already be over).
+export function closestAliveOpponent(p) {
+  var best = null, bestDist = Infinity;
+  for (var i = 0; i < store.players.length; i++) {
+    var o = store.players[i];
+    if (o === p || !o.alive) continue;
+    var d = Math.abs(o.x - p.x);
+    if (d < bestDist) { bestDist = d; best = o; }
+  }
+  return best;
 }
 
 function roundRectPath(c, x, y, w, h, r) {
@@ -474,7 +502,7 @@ export function drawTank(p) {
   var sx = p.x;
   var groundY = terrainHeightAt(p.x);
   var ls = 1 / store.camZoom;
-  var dir = p.idx === 0 ? 1 : -1;
+  var dir = p.dir;
   var drawBody = BODY_DRAWERS[p.tankType] || drawTrooperBody;
 
   ctx.save();

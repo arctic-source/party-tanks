@@ -5,6 +5,7 @@ import {
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive } from "./camera.js";
 import { updateTurnUI, showToast } from "./ui.js";
+import { closestAliveOpponent } from "./tanks.js";
 
 // Spawns at the barrel tip rather than a fixed offset from the tank body,
 // using the same pivot point + direction vector drawTank() draws the
@@ -15,7 +16,7 @@ export function fire() {
   if (store.state !== "aim") return;
   var p = store.players[store.active];
   var rad = p.angle * Math.PI / 180;
-  var dir = p.idx === 0 ? 1 : -1;
+  var dir = p.dir;
   var bx = Math.cos(rad) * dir;
   var by = -Math.sin(rad);
   var speed = p.power * POWER_TO_SPEED;
@@ -56,11 +57,14 @@ export function resolveImpact(x, y, hitTank, t, reason) {
     }
   }
   if (window.__BENCH__ && window.__BENCH__.pendingShot) {
-    var defender = store.players[1 - store.active];
+    // "Miss distance" against the closest alive opponent - the same
+    // reference point bot.js's real targeting uses - since a free-for-all
+    // has no single fixed "the defender" to measure against.
+    var refOpp = closestAliveOpponent(shooter);
     window.__BENCH__.pendingShot.landingX = x;
     window.__BENCH__.pendingShot.landingY = y;
-    window.__BENCH__.pendingShot.missDistance = Math.abs(x - defender.x);
-    window.__BENCH__.pendingShot.hitOpponent = hitTank === defender;
+    window.__BENCH__.pendingShot.missDistance = refOpp ? Math.abs(x - refOpp.x) : null;
+    window.__BENCH__.pendingShot.hitOpponent = !!hitTank && hitTank !== shooter;
     window.__BENCH__.pendingShot.hitSelf = hitTank === shooter;
     window.__BENCH__.pendingShot.damage = dmg;
     window.__BENCH__.pendingShot.reason = reason || null;
@@ -100,16 +104,34 @@ export function decayScenery() {
 export function afterResolve() {
   applySceneryFireDamage();
 
-  var loser = store.players.filter(function (p) { return p.health <= 0; })[0];
-  if (loser) {
-    var winner = store.players[1 - loser.idx];
-    document.getElementById("winText").textContent = winner.name + " Wins!";
+  // Mark anyone newly at 0 health as eliminated - stays on the field as
+  // wreckage (still drawn, never hit-tested, never gets another turn)
+  // rather than being removed. Usually at most one player crosses this
+  // per resolve (a single bullet only ever hits one tank), but burning-
+  // scenery damage above can finish off more than one at once.
+  store.players.forEach(function (p) {
+    if (p.alive && p.health <= 0) {
+      p.alive = false;
+      showToast("💥 " + p.name + " eliminated!");
+    }
+  });
+
+  var survivors = store.players.filter(function (p) { return p.alive; });
+  if (survivors.length <= 1) {
+    // survivors.length === 0 is a rare simultaneous-elimination edge case
+    // (e.g. fire damage finishing off the last two players in the same
+    // resolve) - call it a draw rather than crashing on an undefined winner.
+    var winner = survivors[0];
+    document.getElementById("winText").textContent = winner ? winner.name + " Wins!" : "Draw!";
     document.getElementById("overlay").classList.add("show");
     store.state = "gameover";
     return;
   }
+
   decayScenery();
-  store.active = 1 - store.active;
+  do {
+    store.active = (store.active + 1) % store.players.length;
+  } while (!store.players[store.active].alive);
   store.players[store.active].fuel = FUEL_MAX;
   store.state = "aim";
   centerCameraOnActive();

@@ -13,7 +13,7 @@ import {
 } from "./camera.js";
 import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
 import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, sceneryHitAt } from "./scenery.js";
-import { stepBallistic } from "./utils.js";
+import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
@@ -29,7 +29,7 @@ import { beginTankSelection, confirmTankSelection } from "./tankSelect.js";
 // far wings" as genuinely different zones instead of the arena being a
 // tiny sliver lost in a much bigger, mostly-irrelevant map.
 function computeArenaLayout() {
-  var n = 2; // ACTIVE_SLOTS
+  var n = store.gameConfig.players.length;
   var spacing = PLAYER_SPACING * MAP_SIZE_MULTIPLIER;
   var arenaSpan = spacing * Math.max(1, n - 1);
   store.WORLD_W = Math.round(arenaSpan + WING_MARGIN * 2);
@@ -43,15 +43,19 @@ function computeArenaLayout() {
 // without going through requestAnimationFrame or the pre-game screens.
 export function startMatch() {
   store.activeMap = MAPS[store.mapIndex];
+  // One shuffle decides both starting position (playerStartXs[i] below)
+  // and turn order (store.active cycles 0..N-1 later) - "going around the
+  // table." See CLAUDE.md's load-bearing decision on N-player matches.
+  shuffleArray(store.gameConfig.players);
   computeArenaLayout();
   generateTerrain();
-  store.players = [newTank(0), newTank(1)];
+  store.players = store.gameConfig.players.map(function (_, i) { return newTank(i); });
   store.bullet = null;
   store.impactFlash = null;
-  store.lastImpact = [null, null];
+  store.lastImpact = store.players.map(function () { return null; });
   store.mountainSeed1 = Math.random() * 1000;
   store.mountainSeed2 = Math.random() * 1000;
-  generateScenery([store.players[0].x, store.players[1].x]);
+  generateScenery(store.players.map(function (p) { return p.x; }));
   generateBgTrees();
   generateBgPyramids(store.activeMap.bgFront.count || 3);
   generateClouds();
@@ -63,7 +67,7 @@ export function startMatch() {
   store.bot.moveTimer = null;
   store.camZoom = 1;
   document.getElementById("overlay").classList.remove("show");
-  // Wind/turn-start toast/camera-centering happen once both players have
+  // Wind/turn-start toast/camera-centering happen once every player has
   // picked a tank - see tankSelect.js: finishTankSelection().
   beginTankSelection();
 }
@@ -189,16 +193,16 @@ export function update(dt) {
       // toward that side of the screen), not angle-relative (Up/Down
       // rotating clockwise vs anticlockwise depending on which way the
       // tank happens to face) - the old Up/Down labels meant opposite
-      // rotation directions for player 0 vs player 1, which is exactly
-      // what made them confusing. p.angle's 0..180 sweep already goes
-      // from "barrel tip toward dir" through straight up to "away from
-      // dir" (see combat.js: fire()'s bx = cos(angle) * dir), so
-      // reaching screen-right consistently means increasing angle when
-      // dir is -1 and decreasing it when dir is 1 - i.e. scaling the
-      // delta by dir flips which button increases/decreases p.angle per
-      // player, so both players' Right button always visibly tilts the
-      // barrel rightward.
-      var dir = p.idx === 0 ? 1 : -1;
+      // rotation directions depending on facing, which is exactly what
+      // made them confusing. p.angle's 0..180 sweep already goes from
+      // "barrel tip toward dir" through straight up to "away from dir"
+      // (see combat.js: fire()'s bx = cos(angle) * dir), so reaching
+      // screen-right consistently means increasing angle when dir is -1
+      // and decreasing it when dir is 1 - i.e. scaling the delta by dir
+      // flips which button increases/decreases p.angle per facing, so
+      // every tank's Right button always visibly tilts the barrel
+      // rightward regardless of which way it's facing.
+      var dir = p.dir;
       if (store.held.angleRight) p.angle = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, p.angle - ANGLE_RATE * dt * dir));
       if (store.held.angleLeft) p.angle = Math.max(ANGLE_MIN, Math.min(ANGLE_MAX, p.angle + ANGLE_RATE * dt * dir));
       if (store.held.powerUp) p.power = Math.min(POWER_MAX, p.power + POWER_RATE * dt);
@@ -238,13 +242,23 @@ export function update(dt) {
     clampCam();
 
     var shooter = store.players[store.active];
-    var defender = store.players[1 - store.active];
 
     // Self-damage only arms after a brief grace period so the bullet
     // clears its own barrel first - otherwise every shot would trigger
     // an instant self-hit at the spawn point right next to the tank.
     var selfT = bullet.elapsed >= SELF_DAMAGE_GRACE ? hitTest(bullet, shooter) : null;
-    var defT = hitTest(bullet, defender);
+
+    // Test every other still-alive tank, not one fixed "the" opponent -
+    // resolves on whichever one the bullet is actually inside. Eliminated
+    // tanks are wreckage, not obstacles: excluded here so a bullet passes
+    // straight through them.
+    var defender = null, defT = null;
+    for (var di = 0; di < store.players.length; di++) {
+      var candidate = store.players[di];
+      if (candidate === shooter || !candidate.alive) continue;
+      var t = hitTest(bullet, candidate);
+      if (t !== null) { defender = candidate; defT = t; break; }
+    }
 
     var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
     var hitItem = sceneryHitAt(bullet.x, bullet.y);

@@ -30,10 +30,14 @@ A batch of 60 matches should take low single-digit seconds.
 ```
 node bench/run.js --matchup medium:medium --matches 60
 node bench/run.js --matchup easy:easy,medium:medium,hard:hard --matches 40 --seed 42
+node bench/run.js --matchup medium:medium:hard --matches 60
+node bench/run.js --matchup easy:medium:hard:hard --matches 40
 node bench/run.js --help
 ```
 
-Key flags: `--matchup p1:p2,...` (aiLevel pairs, `easy`/`medium`/`hard`),
+Key flags: `--matchup lvl:lvl[:lvl[:lvl]],...` (2-4 colon-separated
+`easy`/`medium`/`hard` levels per matchup - one per bot in that
+free-for-all; comma-separates multiple matchups in one batch),
 `--matches <N>` (per matchup), `--map chillForest|desert|random`,
 `--wind none|light|strong|random`, `--seed <N>` (reproducible A/B runs -
 use the same seed on a "before" and "after" run when the only thing that
@@ -51,7 +55,10 @@ summary plus the path to the output file.
 node bench/analyze.js /tmp/party-tanks-bench-<timestamp>.jsonl
 ```
 
-Prints: win rate per matchup, overall/first-shot/by-shot-number/
+Prints: win rate per matchup (grouped by aiLevel lineup, e.g.
+"medium:medium:hard", with wins attributed to whichever aiLevel actually
+won - not a fixed player slot, since starting position/turn order are
+shuffled every match), overall/first-shot/by-shot-number/
 by-memory-confidence-bucket/by-range-bucket hit rates (with 95% CI
 half-widths so small buckets aren't over-read), distance/stdDev/miss-
 distance distributions, shots-to-first-hit, and movement behavior

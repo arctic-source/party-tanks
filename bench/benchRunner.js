@@ -77,12 +77,17 @@ function driveMatchToCompletion(maxIters) {
   return store.state === "gameover";
 }
 
-function setupPlayers(matchup) {
-  var c0 = COLOR_PALETTE[0], c1 = COLOR_PALETTE[1];
-  store.gameConfig.players = [
-    { name: "Bot A", color: c0.body, colorDark: c0.dark, isBot: true, aiLevel: matchup.p1 },
-    { name: "Bot B", color: c1.body, colorDark: c1.dark, isBot: true, aiLevel: matchup.p2 }
-  ];
+// levels: array of 2-4 aiLevel strings, one per bot - "Bot A".."Bot D".
+// Note startMatch() shuffles store.gameConfig.players itself (that's the
+// real N-player position/turn-order feature, not bench-specific), so
+// which of these ends up store.players[0] varies match to match - see
+// bench/analyze.js, which keys off aiLevel via match_start's recorded
+// players list rather than assuming a fixed slot.
+function setupPlayers(levels) {
+  store.gameConfig.players = levels.map(function (level, i) {
+    var c = COLOR_PALETTE[i];
+    return { name: "Bot " + String.fromCharCode(65 + i), color: c.body, colorDark: c.dark, isBot: true, aiLevel: level };
+  });
 }
 
 function setupMap(mapPolicy) {
@@ -127,12 +132,13 @@ window.__BENCH__ = {
     window.__BENCH__.log.push(entry);
   },
 
-  // config: { matchups: [{p1:"medium",p2:"hard"}, ...], matchesPerMatchup,
+  // config: { matchups: [{levels:["medium","hard"]}, ...] (2-4 levels per
+  //           matchup), matchesPerMatchup,
   //           mapPolicy: "random"|mapKey, windPolicy: "random"|"none"|"light"|"strong",
   //           seed, maxTurnIters }
   runBatch: async function (config) {
     config = config || {};
-    var matchups = config.matchups || [{ p1: "medium", p2: "medium" }];
+    var matchups = config.matchups || [{ levels: ["medium", "medium"] }];
     var matchesPerMatchup = config.matchesPerMatchup || 10;
     var mapPolicy = config.mapPolicy || "random";
     var windPolicy = config.windPolicy || "random";
@@ -152,7 +158,7 @@ window.__BENCH__ = {
           window.__BENCH__.currentTurnIndex = 0;
           window.__BENCH__.pendingShot = null;
 
-          setupPlayers(matchup);
+          setupPlayers(matchup.levels);
           setupMap(mapPolicy);
           setupWind(windPolicy);
           startMatch();
@@ -169,22 +175,29 @@ window.__BENCH__ = {
           window.__BENCH__.log.push({
             type: "match_start",
             matchId: matchId,
-            matchup: { p1: matchup.p1, p2: matchup.p2 },
+            matchup: { levels: matchup.levels },
             mapKey: store.activeMap.key,
             mapName: store.activeMap.name,
             layoutName: store.currentLayoutName,
             windValue: store.wind,
-            players: [
-              { idx: store.players[0].idx, aiLevel: store.players[0].aiLevel, tankType: store.players[0].tankType },
-              { idx: store.players[1].idx, aiLevel: store.players[1].aiLevel, tankType: store.players[1].tankType }
-            ]
+            // Post-shuffle order (startMatch() shuffles store.gameConfig.players
+            // itself to decide position/turn order) - idx here is each
+            // player's actual in-match slot, not their position in
+            // matchup.levels above.
+            players: store.players.map(function (p) {
+              return { idx: p.idx, aiLevel: p.aiLevel, tankType: p.tankType };
+            })
           });
 
           var completed = driveMatchToCompletion(maxTurnIters);
 
+          // Winner is whoever's still alive - works for any player count,
+          // unlike inferring it from a single "the other one died" check.
+          // null (a draw) is possible but rare - see combat.js: afterResolve().
           var winnerIdx = null;
-          if (store.players[0].health <= 0) winnerIdx = 1;
-          else if (store.players[1].health <= 0) winnerIdx = 0;
+          for (var wi = 0; wi < store.players.length; wi++) {
+            if (store.players[wi].alive) { winnerIdx = wi; break; }
+          }
 
           var shotsThisMatch = 0;
           for (var li = 0; li < window.__BENCH__.log.length; li++) {
@@ -199,7 +212,7 @@ window.__BENCH__ = {
             winnerIdx: winnerIdx,
             turns: window.__BENCH__.currentTurnIndex,
             totalShots: shotsThisMatch,
-            finalHealth: [store.players[0].health, store.players[1].health]
+            finalHealth: store.players.map(function (p) { return p.health; })
           });
         }
       }

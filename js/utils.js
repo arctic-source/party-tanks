@@ -31,6 +31,19 @@ export function mixHex(hexA, hexB, t) {
 
 export function lerp(a, b, t) { return a + (b - a) * t; }
 
+// Fisher-Yates, in place. Used once per match (main.js: startMatch()) to
+// decide both starting position and turn order from a single shuffle - see
+// CLAUDE.md's load-bearing decision on N-player matches.
+export function shuffleArray(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
 // Integrates one dt of ballistic motion in place on a {x,y,vx,vy} object -
 // gravity and wind are passed in as plain accelerations (not read from
 // store/constants here) so this stays a pure helper. Shared by the real
