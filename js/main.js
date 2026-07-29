@@ -15,7 +15,7 @@ import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
 import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, sceneryHitAt } from "./scenery.js";
 import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
-import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks } from "./tanks.js";
+import { newTank, drawTank, drawBullet, drawFlash, drawImpactMarks, updateWreckEffects, drawWreckEffects } from "./tanks.js";
 import { fire, resolveImpact, afterResolve } from "./combat.js";
 import { showScreen, renderPlayerRows, renderWindConfig, changeWindLevel, renderMapConfig, changeMapIndex, applyPlayerConfigToGame, activePlayerCount } from "./playerConfig.js";
 import { updateTurnUI, updateFuelUI, updateAimUI, showToast, updateFsButton } from "./ui.js";
@@ -189,6 +189,13 @@ function hitTest(bullet, tank) {
 // loop with a dt it chooses itself (instead of real elapsed rAF time) -
 // see CLAUDE.md's load-bearing decision on the simulation bench.
 export function update(dt) {
+  // Runs every frame regardless of aim/flight/resolve state - an
+  // eliminated tank keeps smoking/sparking through the rest of the match,
+  // not just during its own (nonexistent) turn.
+  store.players.forEach(function (p) {
+    if (!p.alive) updateWreckEffects(p, dt);
+  });
+
   if (store.state === "aim") {
     var p = store.players[store.active];
     if (p.isBot) {
@@ -305,6 +312,7 @@ function render() {
   drawImpactMarks();
   drawScenery("ash");
   store.players.forEach(drawTank);
+  store.players.forEach(drawWreckEffects);
   drawScenery("alive");
   drawScenery("burning");
   drawBullet();

@@ -5,7 +5,7 @@ import {
 import { terrainHeightAt, deformTerrain } from "./terrain.js";
 import { centerCameraOnActive } from "./camera.js";
 import { updateTurnUI, showToast } from "./ui.js";
-import { closestAliveOpponent } from "./tanks.js";
+import { closestAliveOpponent, initWreck } from "./tanks.js";
 
 // Spawns at the barrel tip rather than a fixed offset from the tank body,
 // using the same pivot point + direction vector drawTank() draws the
@@ -112,6 +112,7 @@ export function afterResolve() {
   store.players.forEach(function (p) {
     if (p.alive && p.health <= 0) {
       p.alive = false;
+      initWreck(p);
       showToast("💥 " + p.name + " eliminated!");
     }
   });

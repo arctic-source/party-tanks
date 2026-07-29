@@ -1,7 +1,13 @@
 import { store } from "./store.js";
-import { FUEL_MAX, POWER_MAX, TANK_TYPES, AI_LEVELS } from "./constants.js";
+import {
+  FUEL_MAX, POWER_MAX, TANK_TYPES, AI_LEVELS,
+  WRECK_SMOKE_INTERVAL_MIN, WRECK_SMOKE_INTERVAL_MAX, WRECK_SMOKE_LIFE_MIN, WRECK_SMOKE_LIFE_MAX,
+  WRECK_SMOKE_RISE_SPEED, WRECK_SMOKE_MAX,
+  WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX, WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX, WRECK_SPARK_MAX
+} from "./constants.js";
 import { ctx } from "./canvas.js";
 import { terrainHeightAt } from "./terrain.js";
+import { randRange } from "./utils.js";
 
 // ---------- Shared neutral palette ----------
 // Structure (hull/legs/turret) stays this grey/black regardless of player -
@@ -66,6 +72,7 @@ export function newTank(idx) {
     // at a given opponent (bot.js: computeAimStdDev/beginAimAndWait).
     aiMemory: {},
     alive: true, // flips false in combat.js: afterResolve() once health hits 0 - eliminated tanks stay on the field as wreckage but never act or block bullets again
+    wreck: null, // set once by initWreck() the instant this tank is eliminated - {smoke, sparks, smokeTimer, sparkTimer}
     selected: false
   };
   applyTankType(p, "trooper"); // sensible default until the player actually picks
@@ -267,8 +274,32 @@ function glassDome(c, ls, x, y, r, accentColor) {
   c.fill();
 }
 
+// Same silhouette as glassDome, but dark/shattered instead of lit blue -
+// used for Jumper's canopy when wrecked (see drawJumperBody's `wrecked`
+// branch below).
+function crackedGlassDome(c, ls, x, y, r) {
+  c.beginPath();
+  c.arc(x, y, r, Math.PI, 0);
+  c.closePath();
+  c.fillStyle = "#14171c";
+  c.fill();
+  c.strokeStyle = NEUTRAL_DARK;
+  c.lineWidth = 1.4 * ls;
+  c.stroke();
+  c.strokeStyle = "rgba(220,230,240,0.55)";
+  c.lineWidth = 0.7 * ls;
+  c.beginPath();
+  c.moveTo(x, y - r * 0.1);
+  c.lineTo(x - r * 0.55, y - r * 0.55);
+  c.moveTo(x, y - r * 0.1);
+  c.lineTo(x + r * 0.45, y - r * 0.7);
+  c.moveTo(x, y - r * 0.1);
+  c.lineTo(x - r * 0.1, y - r * 0.85);
+  c.stroke();
+}
+
 // ---------- Trooper ----------
-function drawTrooperBody(c, ls, color, dark, accentColor) {
+function drawTrooperBody(c, ls, color, dark, accentColor, wrecked) {
   drawTrackBand(c, ls, 48, 8, [-16, -2, 12]);
 
   c.beginPath();
@@ -298,8 +329,16 @@ function drawTrooperBody(c, ls, color, dark, accentColor) {
 
   c.beginPath();
   c.arc(1, -24, 1.8, 0, Math.PI * 2);
-  c.fillStyle = GLASS_BLUE_SOLID;
+  c.fillStyle = wrecked ? "#14171c" : GLASS_BLUE_SOLID;
   c.fill();
+  if (wrecked) {
+    c.strokeStyle = "rgba(220,230,240,0.6)";
+    c.lineWidth = 0.5 * ls;
+    c.beginPath();
+    c.moveTo(0, -25.2);
+    c.lineTo(2, -22.8);
+    c.stroke();
+  }
 
   c.strokeStyle = NEUTRAL_DARK;
   c.lineWidth = 1 * ls;
@@ -315,7 +354,7 @@ function drawTrooperBody(c, ls, color, dark, accentColor) {
 }
 
 // ---------- Jumper ----------
-function drawJumperBody(c, ls, color, dark, accentColor) {
+function drawJumperBody(c, ls, color, dark, accentColor, wrecked) {
   mechLeg(c, ls, -7, -40, -15, -23, -6, -2, -1);
   mechLeg(c, ls, 7, -40, 15, -23, 6, -2, 1);
 
@@ -361,11 +400,15 @@ function drawJumperBody(c, ls, color, dark, accentColor) {
   c.fill();
   c.globalAlpha = 1;
 
-  glassDome(c, ls, 7, -50, 5.5, accentColor);
+  if (wrecked) {
+    crackedGlassDome(c, ls, 7, -50, 5.5);
+  } else {
+    glassDome(c, ls, 7, -50, 5.5, accentColor);
+  }
 }
 
 // ---------- Juggernaut ----------
-function drawJuggernautBody(c, ls, color, dark, accentColor) {
+function drawJuggernautBody(c, ls, color, dark, accentColor, wrecked) {
   drawTrackBand(c, ls, 52, 9, [-19, 0, 19]);
 
   c.beginPath();
@@ -401,8 +444,16 @@ function drawJuggernautBody(c, ls, color, dark, accentColor) {
   c.fill();
 
   roundRectPath(c, -3, -22, 5, 3, 1);
-  c.fillStyle = GLASS_BLUE_SOLID;
+  c.fillStyle = wrecked ? "#14171c" : GLASS_BLUE_SOLID;
   c.fill();
+  if (wrecked) {
+    c.strokeStyle = "rgba(220,230,240,0.6)";
+    c.lineWidth = 0.5 * ls;
+    c.beginPath();
+    c.moveTo(-3, -22);
+    c.lineTo(2, -19.2);
+    c.stroke();
+  }
 
   roundRectPath(c, -22, -9, 10, 5, 1);
   c.fillStyle = NEUTRAL_DARK;
@@ -452,6 +503,196 @@ var BODY_DRAWERS = {
   juggernaut: drawJuggernautBody
 };
 
+// ---------- Wreckage (destroyed tank) ----------
+// A destroyed tank keeps its type-correct silhouette (still recognizable
+// which type it was) with generic damage decals on top instead of bespoke
+// per-type damage art: cracked glass (handled inside each BODY_DRAWERS
+// entry via its `wrecked` flag above), a scorched hole roughly centered on
+// the hull, and a snapped, drooping barrel. Sizing the hole off this
+// type's own hitHalfWidth/hitHeight (rather than hardcoded per-type
+// coordinates) is what lets one function cover all three types.
+function drawWreckDamage(c, ls, p) {
+  var hw = p.hitHalfWidth, hh = p.hitHeight;
+  var cx = 0, cy = -hh * 0.55;
+  var r = Math.min(hw, hh) * 0.34;
+
+  // Soot smudge - a few overlapping low-alpha dark blobs, not one clean
+  // circle, so it reads as scorching rather than a painted dot.
+  c.save();
+  c.globalAlpha = 0.4;
+  c.fillStyle = "#101114";
+  [[-0.25, 0.35], [0.2, -0.15], [0, 0.05]].forEach(function (o) {
+    c.beginPath();
+    c.arc(cx + o[0] * hw, cy + o[1] * hh, r * 0.85, 0, Math.PI * 2);
+    c.fill();
+  });
+  c.globalAlpha = 1;
+  c.restore();
+
+  // The hole itself - a jagged polygon from a fixed multi-harmonic sine
+  // wobble (deterministic, not Math.random()) so the outline is stable
+  // frame to frame instead of visibly vibrating; seeded off p.idx so
+  // different tanks' wrecks don't all show the exact same shape.
+  c.save();
+  c.beginPath();
+  var pts = 9;
+  for (var i = 0; i <= pts; i++) {
+    var a = (i / pts) * Math.PI * 2;
+    var rr = r * (1 + 0.22 * Math.sin(a * 3 + p.idx * 1.7) + 0.14 * Math.cos(a * 5 + p.idx * 0.9));
+    var px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr * 0.85;
+    if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+  }
+  c.closePath();
+  c.fillStyle = "#050506";
+  c.fill();
+  c.strokeStyle = "#6b3a1f";
+  c.lineWidth = 1.6 * ls;
+  c.stroke();
+  c.restore();
+}
+
+// Fixed drooping/snapped pose, independent of the tank's actual aim angle
+// (nothing to aim anymore) - a short stub with a jagged torn tip instead
+// of the normal clean muzzle/collar. Drawn outside the mirrored
+// ctx.scale(dir,1) scope using dir-aware vectors directly, same
+// convention drawBarrelShape follows for the live barrel.
+function drawBrokenBarrel(c, ls, pivotX, pivotY, len, lw, dir) {
+  var angleDeg = -72;
+  var rad = angleDeg * Math.PI / 180;
+  var bx = Math.cos(rad) * dir, by = -Math.sin(rad);
+  var stubLen = len * 0.5;
+  var tipX = pivotX + bx * stubLen, tipY = pivotY + by * stubLen;
+
+  c.strokeStyle = NEUTRAL_DARK;
+  c.lineWidth = lw * ls;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(pivotX, pivotY);
+  c.lineTo(tipX, tipY);
+  c.stroke();
+
+  var nx = -by, ny = bx;
+  c.strokeStyle = NEUTRAL_SILVER;
+  c.lineWidth = lw * 0.55 * ls;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(tipX - nx * lw * 0.9, tipY - ny * lw * 0.9);
+  c.lineTo(tipX + bx * lw * 0.6, tipY + by * lw * 0.6);
+  c.lineTo(tipX + nx * lw * 0.5, tipY + ny * lw * 0.5);
+  c.stroke();
+}
+
+function drawWreckedTank(p) {
+  var sx = p.x;
+  var groundY = terrainHeightAt(p.x);
+  var ls = 1 / store.camZoom;
+  var dir = p.dir;
+  var drawBody = BODY_DRAWERS[p.tankType] || drawTrooperBody;
+
+  ctx.save();
+  ctx.translate(sx, groundY);
+  ctx.save();
+  ctx.scale(dir, 1);
+  drawBody(ctx, ls, p.color, p.colorDark, p.color, true);
+  drawWreckDamage(ctx, ls, p);
+  ctx.restore();
+
+  var pivotX = p.barrelPivotX * dir;
+  var pivotY = -p.barrelPivotY;
+  drawBrokenBarrel(ctx, ls, pivotX, pivotY, p.barrelLength, p.barrelWidth, dir);
+  ctx.restore();
+}
+
+// Called exactly once, from combat.js: afterResolve() the instant a tank
+// is eliminated. Purely cosmetic state - no gameplay effect.
+export function initWreck(p) {
+  p.wreck = { smoke: [], sparks: [], smokeTimer: 0, sparkTimer: 0 };
+}
+
+// Called every frame for every eliminated tank regardless of game state
+// (aim/flight/resolve) - see main.js: update(). dt can be large under the
+// AI-tuning bench's adaptive stepping; spawn timers and per-particle life
+// decay both degrade gracefully under a big dt (at most one spawn per
+// call each for smoke/sparks, particles older than their life just get
+// pruned - no runaway growth or backlog).
+export function updateWreckEffects(p, dt) {
+  var w = p.wreck;
+  if (!w) return;
+
+  w.smokeTimer -= dt;
+  if (w.smokeTimer <= 0 && w.smoke.length < WRECK_SMOKE_MAX) {
+    var life = randRange(WRECK_SMOKE_LIFE_MIN, WRECK_SMOKE_LIFE_MAX);
+    w.smoke.push({
+      x: randRange(-4, 4), y: 0,
+      vx: store.wind * 8 + randRange(-4, 4),
+      vy: -randRange(WRECK_SMOKE_RISE_SPEED * 0.7, WRECK_SMOKE_RISE_SPEED * 1.3),
+      r: randRange(3, 5),
+      life: life, maxLife: life
+    });
+    w.smokeTimer = randRange(WRECK_SMOKE_INTERVAL_MIN, WRECK_SMOKE_INTERVAL_MAX);
+  }
+  w.smoke = w.smoke.filter(function (s) {
+    s.life -= dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.r += dt * 3;
+    return s.life > 0;
+  });
+
+  w.sparkTimer -= dt;
+  if (w.sparkTimer <= 0 && w.sparks.length < WRECK_SPARK_MAX) {
+    var sLife = randRange(WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX);
+    w.sparks.push({
+      x: randRange(-5, 5), y: randRange(-3, 3),
+      vx: randRange(-6, 6), vy: randRange(-14, -4),
+      life: sLife, maxLife: sLife
+    });
+    w.sparkTimer = randRange(WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX);
+  }
+  w.sparks = w.sparks.filter(function (s) {
+    s.life -= dt;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    return s.life > 0;
+  });
+}
+
+// Drawn in world space (no ctx.scale(dir,1) needed - smoke/sparks are
+// symmetric), anchored near the same hole drawWreckDamage() draws so the
+// smoke visibly comes from the damage. Called from main.js: render()
+// after all tanks are drawn.
+export function drawWreckEffects(p) {
+  var w = p.wreck;
+  if (!w) return;
+  var originX = p.x, originY = terrainHeightAt(p.x) - p.hitHeight * 0.55;
+
+  w.smoke.forEach(function (s) {
+    var t = Math.max(0, s.life / s.maxLife);
+    ctx.save();
+    ctx.globalAlpha = t * 0.45;
+    ctx.fillStyle = "#767b82";
+    ctx.beginPath();
+    ctx.arc(originX + s.x, originY + s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  w.sparks.forEach(function (s) {
+    var t = Math.max(0, s.life / s.maxLife);
+    ctx.save();
+    ctx.globalAlpha = t;
+    ctx.fillStyle = "#ff9a2e";
+    ctx.beginPath();
+    ctx.arc(originX + s.x, originY + s.y, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffe066";
+    ctx.beginPath();
+    ctx.arc(originX + s.x, originY + s.y, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
 // A crate sits at each unselected player's starting position - "boxes on
 // the map" until that player picks a tank, at which point drawTank()
 // simply stops calling this and draws the real body instead (an instant
@@ -498,6 +739,7 @@ export function drawSupplyCrate(p) {
 // they're never double-flipped.
 export function drawTank(p) {
   if (!p.selected) { drawSupplyCrate(p); return; }
+  if (!p.alive) { drawWreckedTank(p); return; }
 
   var sx = p.x;
   var groundY = terrainHeightAt(p.x);

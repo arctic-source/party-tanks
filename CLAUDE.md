@@ -38,7 +38,8 @@ js/
   background.js    sky gradient (per-map colors), parallax background
                    layers (mountains or pyramids, per map), clouds
   tanks.js         tank type stats/art (TANK_TYPES-driven body drawers,
-                   supply-crate-until-selected, bullet/flash/impact marks)
+                   supply-crate-until-selected, wreckage art + smoke/spark
+                   particles once eliminated, bullet/flash/impact marks)
   combat.js        fire(), resolveImpact(), scenery-fire damage, turn resolution
   playerConfig.js  pre-game screens, player name/color + wind/map config persistence
   ui.js            turn/fuel/aim HUD text, per-player theming, toasts,
@@ -522,18 +523,49 @@ These came out of real back-and-forth with the user — don't casually
   `p.alive` (present on every tank since `newTank()`, previously set but
   never read) flips to `false` in `combat.js: afterResolve()` the instant
   `p.health <= 0`, with a toast ("💥 Player X eliminated!"). An eliminated
-  tank stays on the field as wreckage - still drawn (`drawTank()` doesn't
-  check `alive` - a destroyed tank looks the same as a living one that
-  happens to be at 0 health, which is fine since it never gets another
-  turn), but excluded from hit-testing (`main.js: update()`'s flight
-  branch skips `!p.alive` tanks entirely, so bullets pass through
-  wreckage) and from the turn rotation (`afterResolve()`'s
-  `do { store.active = (store.active + 1) % store.players.length; }
-  while (!store.players[store.active].alive);`). The match ends the
-  instant `store.players.filter(p => p.alive).length <= 1` - most often
-  exactly 1 survivor (the winner), but 0 is possible (e.g. burning-scenery
-  damage finishing off the last two players in the same resolve) and is
-  shown as "Draw!" rather than crashing on an undefined winner.
+  tank stays on the field as wreckage, now visibly distinct from a live
+  tank (see the wreckage decision below), excluded from hit-testing
+  (`main.js: update()`'s flight branch skips `!p.alive` tanks entirely,
+  so bullets pass through wreckage) and from the turn rotation
+  (`afterResolve()`'s `do { store.active = (store.active + 1) %
+  store.players.length; } while (!store.players[store.active].alive);`).
+  The match ends the instant `store.players.filter(p => p.alive).length
+  <= 1` - most often exactly 1 survivor (the winner), but 0 is possible
+  (e.g. burning-scenery damage finishing off the last two players in the
+  same resolve) and is shown as "Draw!" rather than crashing on an
+  undefined winner.
+- **A destroyed tank gets generic damage decals over its normal
+  type-specific silhouette, not bespoke per-type wreck art.**
+  (`tanks.js: drawWreckedTank()`, routed to from `drawTank()`'s new
+  `if (!p.alive)` check - added ahead of the live-tank drawing path, same
+  early-return shape as the existing `!p.selected` → `drawSupplyCrate()`
+  check.) Keeping the same `BODY_DRAWERS[p.tankType]` call (with a new
+  trailing `wrecked` boolean) means a wrecked tank is still recognizably
+  "that type," just damaged - cracked/dark glass is handled *inside* each
+  of `drawTrooperBody`/`drawJumperBody`/`drawJuggernautBody` (and the new
+  `crackedGlassDome` sibling of `glassDome`) since only they know where
+  their own glass shape actually is, but the scorched hole+soot overlay
+  (`drawWreckDamage()`) and the snapped, drooping barrel
+  (`drawBrokenBarrel()`, fixed -72° pose independent of the tank's actual
+  aim angle) are both generic, sized off that type's own
+  `hitHalfWidth`/`hitHeight`/`barrelLength` rather than per-type
+  coordinates - this is what lets one pair of functions cover all three
+  types instead of three bespoke damage art sets. The hole's jagged
+  outline comes from a fixed multi-harmonic sine wobble seeded off
+  `p.idx`, not `Math.random()` - it has to be identical frame to frame or
+  the outline visibly vibrates, since `drawWreckedTank()` re-runs every
+  render call. Ongoing smoke + fire-like sparks are separate, dynamic
+  state: `initWreck(p)` (called once, from `afterResolve()`, right where
+  `p.alive` flips false) allocates `p.wreck = {smoke, sparks, ...timers}`;
+  `updateWreckEffects(p, dt)` runs unconditionally every frame for every
+  `!p.alive` tank in `main.js: update()` (outside the aim/flight/resolve
+  branch entirely, so a wreck keeps smoking through every phase, not just
+  during some pseudo-turn) using spawn timers that degrade gracefully
+  under the AI-tuning bench's large adaptive `dt` (at most one spawn per
+  call, no backlog); `drawWreckEffects(p)` draws them in world space
+  (no `ctx.scale(dir,1)` needed, they're symmetric) from `main.js:
+  render()`, right after the tanks loop. Purely cosmetic - none of this
+  affects hit-testing, damage, or bot behavior.
 - **Bots always target whichever alive opponent is currently closest** -
   `tanks.js: closestAliveOpponent(p)`, a plain linear scan, is the one
   targeting rule at every difficulty level (no per-level variance was
@@ -615,7 +647,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v18`). **Bump this version any time you change
+  (currently `party-tanks-v19`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

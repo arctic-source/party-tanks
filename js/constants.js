@@ -273,3 +273,15 @@ export var AI_LEVELS = {
     evadeDistMax: 350
   }
 };
+
+// ---------- Wreckage effects ----------
+// Purely cosmetic (no gameplay effect) - a destroyed tank keeps smoking
+// and sparking for the rest of the match. See tanks.js: initWreck() /
+// updateWreckEffects() / drawWreckEffects().
+export var WRECK_SMOKE_INTERVAL_MIN = 0.15, WRECK_SMOKE_INTERVAL_MAX = 0.35;
+export var WRECK_SMOKE_LIFE_MIN = 1.4, WRECK_SMOKE_LIFE_MAX = 2.4;
+export var WRECK_SMOKE_RISE_SPEED = 18; // px/s upward, before per-puff randomization
+export var WRECK_SMOKE_MAX = 14; // safety cap on concurrent puffs per wreck
+export var WRECK_SPARK_INTERVAL_MIN = 0.06, WRECK_SPARK_INTERVAL_MAX = 0.18;
+export var WRECK_SPARK_LIFE_MIN = 0.15, WRECK_SPARK_LIFE_MAX = 0.35;
+export var WRECK_SPARK_MAX = 5; // safety cap on concurrent sparks per wreck
