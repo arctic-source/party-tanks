@@ -296,9 +296,39 @@ export var WRECK_SPARK_MAX = 5; // safety cap on concurrent sparks per wreck
 export var ELIMINATION_PRE_EXPLOSION_DELAY = 0.45; // seconds the camera holds zoomed-in on the tank, nothing happening yet, before the explosion actually starts
 export var ELIMINATION_HOLD_TIME = 1.8; // seconds the camera stays locked on the wreck AFTER the explosion starts, before handing off to the next turn
 export var ELIMINATION_ZOOM = ZOOM_MAX * 0.9; // "almost to the max" punch-in for the hold, restored to whatever camZoom was beforehand once it ends
+// The shared "blast" - flash + black smoke + falling debris pixels - reused
+// by every EXPLOSION_KINDS entry below, just scaled by that kind's
+// blastScale (see tanks.js: buildBlast()). These base numbers are the
+// "classic" kind's actual values (blastScale 1).
 export var EXPLOSION_FLASH_TIME = 0.3;
 export var EXPLOSION_SMOKE_COUNT = 7;
 export var EXPLOSION_SMOKE_LIFE_MIN = 0.7, EXPLOSION_SMOKE_LIFE_MAX = 1.3;
 export var EXPLOSION_DEBRIS_COUNT = 14;
 export var EXPLOSION_DEBRIS_LIFE_MIN = 0.9, EXPLOSION_DEBRIS_LIFE_MAX = 1.6;
 export var EXPLOSION_DEBRIS_GRAVITY = 220; // px/s^2 - independent of the bullet's GRAVITY so it's tunable separately
+
+// "sparks" kind's pre-blast phase: a brief fountain of hot pixel sparks
+// sprayed from two points on the tank, arcing down to the ground under
+// their own gravity, before the shared blast above takes over.
+export var EXPLOSION_SPARK_SPRAY_COUNT = 14; // per origin point (2 origins total)
+export var EXPLOSION_SPARK_SPRAY_LIFE_MIN = 0.25, EXPLOSION_SPARK_SPRAY_LIFE_MAX = 0.5;
+export var EXPLOSION_SPARK_SPRAY_GRAVITY = 320; // px/s^2
+
+// "wave" kind's pre-blast phase: a single expanding white pressure-wave
+// ring, before a bigger-than-normal shared blast (see EXPLOSION_KINDS.wave
+// below) takes over.
+export var EXPLOSION_WAVE_MAX_RADIUS = 75; // world px
+
+// One shared table (same pattern as TANK_TYPES/AI_LEVELS/MAPS) - a new
+// explosion kind is a new entry here plus, if it needs a genuinely new
+// pre-blast visual, one pre-phase builder/updater/drawer trio in tanks.js
+// (see spawnExplosion()'s preKind dispatch) - never a new bespoke full
+// explosion implementation, since all three kinds end in the exact same
+// shared blast. spawnExplosion() picks one of these keys at random per
+// kill unless told otherwise.
+export var EXPLOSION_KINDS = {
+  classic: { preKind: null, preDuration: 0, blastScale: 1 },
+  sparks: { preKind: "sparks", preDuration: 0.35, blastScale: 1 },
+  wave: { preKind: "wave", preDuration: 0.3, blastScale: 1.45 }
+};
+export var EXPLOSION_KIND_KEYS = Object.keys(EXPLOSION_KINDS);

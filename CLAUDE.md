@@ -628,6 +628,57 @@ These came out of real back-and-forth with the user — don't casually
   captured before the `Math.max`, not after. Like the position snap, this
   is an instant cut, not a tweened zoom - there's no camera-tweening
   mechanism anywhere else in this codebase to be consistent with.
+- **Three explosion kinds share one blast implementation - same pattern
+  as `TANK_TYPES`/`AI_LEVELS`/`MAPS`, not three bespoke explosions.**
+  (`EXPLOSION_KINDS` in `constants.js`: `classic`, `sparks`, `wave`; each
+  entry is just `{preKind, preDuration, blastScale}`.) `tanks.js:
+  spawnExplosion(p, kind)` picks one at random (uniform) per kill unless
+  told otherwise - the real game never passes `kind`, only bench/debug
+  hooks do. The shared piece is `buildBlast(p, scale)` - today's flash +
+  billowing black smoke + falling debris pixels, extracted near-verbatim
+  from the original single-explosion implementation, with every particle
+  count/size/speed multiplied by `scale` so `wave`'s bigger blast
+  (`blastScale: 1.45`) is the *same code*, not a second copy. `classic`
+  has `preKind: null` - no pre-phase, its blast is built immediately at
+  `spawnExplosion()` time, so it behaves exactly like the original
+  single-kind implementation this replaced. `sparks` and `wave` each add
+  one new, genuinely different pre-phase that plays *before* the shared
+  blast is built:
+  - `sparks`: `buildSpraySparks(p)` fires a brief fountain of small hot
+    pixels from two fixed points on the tank's own hitbox
+    (`±hitHalfWidth*0.45`), each falling under `EXPLOSION_SPARK_SPRAY_GRAVITY`
+    to a ground line (`hitHeight*0.55` below the wreck-damage origin -
+    the same ground-relative offset `EXPLOSION_DEBRIS_GRAVITY` already
+    lands debris at) and stopping there. Color interpolates per-particle
+    from near-white at spawn to yellow-orange as it ages (`t = life/
+    maxLife` drives the interpolation) - "yellowish to whitish," not a
+    flat single-tone spark.
+  - `wave`: a single expanding white ring (`wave.radius`, driven by
+    `preTimer` counting down against `preDuration`) up to
+    `EXPLOSION_WAVE_MAX_RADIUS`, fading out as it grows - a pressure-wave
+    look - before the (scaled-up) blast lands.
+  Both pre-phases use their own `preTimer` (set to `cfg.preDuration` at
+  spawn) rather than reusing `store.eliminationTimer`/`eliminationPhase` -
+  those drive the *camera* hold (see the elimination-sequence decision
+  above) and are a fully separate, coarser-grained state machine; an
+  explosion's own pre-phase timing is internal to `p.wreck.explosion` and
+  ticks inside the same unconditional `updateWreckEffects(p, dt)` the
+  blast itself already relies on, once `preTimer <= 0` it calls
+  `buildBlast()` and the object behaves exactly like `classic`'s from
+  that point on. `spraySparks` (if present) update/fade on their own
+  per-particle life independent of the blast transition - a straggler can
+  still be finishing its fall the same frame the blast starts, which
+  reads as natural overlap rather than a hard cutoff. `p.wreck.explosion`
+  still self-cleans to `null` the same way as before (now gated on *both*
+  the blast being fully faded *and* any `spraySparks` being empty), and
+  `drawWreckEffects()` still draws everything in world space with no
+  `ctx.scale(dir,1)`, same as the ongoing ambient wreck smoke/sparks.
+  Don't add a fourth kind by branching new logic through `buildBlast()`
+  itself or through `updateWreckEffects()`'s explosion block directly -
+  it should be a new `EXPLOSION_KINDS` entry, and only a genuinely new
+  pre-phase visual (not a `blastScale` tweak, which the table already
+  covers) needs new builder/updater/drawer code, dispatched the same way
+  `spraySparks`/`wave` already are.
 - **Bots always target whichever alive opponent is currently closest** -
   `tanks.js: closestAliveOpponent(p)`, a plain linear scan, is the one
   targeting rule at every difficulty level (no per-level variance was
@@ -709,7 +760,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v22`). **Bump this version any time you change
+  (currently `party-tanks-v23`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

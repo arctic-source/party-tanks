@@ -5,7 +5,9 @@ import {
   WRECK_SMOKE_RISE_SPEED, WRECK_SMOKE_MAX,
   WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX, WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX, WRECK_SPARK_MAX,
   EXPLOSION_FLASH_TIME, EXPLOSION_SMOKE_COUNT, EXPLOSION_SMOKE_LIFE_MIN, EXPLOSION_SMOKE_LIFE_MAX,
-  EXPLOSION_DEBRIS_COUNT, EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX, EXPLOSION_DEBRIS_GRAVITY
+  EXPLOSION_DEBRIS_COUNT, EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX, EXPLOSION_DEBRIS_GRAVITY,
+  EXPLOSION_SPARK_SPRAY_COUNT, EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX, EXPLOSION_SPARK_SPRAY_GRAVITY,
+  EXPLOSION_WAVE_MAX_RADIUS, EXPLOSION_KINDS, EXPLOSION_KIND_KEYS
 } from "./constants.js";
 import { ctx } from "./canvas.js";
 import { terrainHeightAt } from "./terrain.js";
@@ -611,30 +613,32 @@ export function initWreck(p) {
   p.wreck = { smoke: [], sparks: [], smokeTimer: 0, sparkTimer: 0, explosion: null };
 }
 
-// The one-time kill burst - flash, a handful of big black smoke puffs
-// that billow outward, and small black debris "pixels" that launch out
-// and fall under their own gravity until they hit the ground and settle.
-// Called once, from combat.js: afterResolve(), right after initWreck() -
-// separate from the ongoing wreck smoke/sparks above (which start empty
-// and build up gradually; this is a sudden burst that fades out on its
-// own and leaves p.wreck.explosion null again once it has).
-export function spawnExplosion(p) {
-  if (!p.wreck) initWreck(p);
+// The shared "blast" - flash, a handful of big black smoke puffs that
+// billow outward, and small black debris "pixels" that launch out and
+// fall under their own gravity until they hit the ground and settle.
+// Reused by every EXPLOSION_KINDS entry (see spawnExplosion() below) -
+// scale multiplies particle counts/sizes/speeds so "wave"'s bigger blast
+// is the exact same code, not a second copy. Coordinates are relative to
+// the same ground-anchored origin drawWreckEffects()/updateWreckEffects()
+// already use for the ongoing wreck smoke/sparks.
+function buildBlast(p, scale) {
   var smoke = [];
-  for (var i = 0; i < EXPLOSION_SMOKE_COUNT; i++) {
+  var smokeCount = Math.round(EXPLOSION_SMOKE_COUNT * scale);
+  for (var i = 0; i < smokeCount; i++) {
     var ang = randRange(0, Math.PI * 2);
-    var spd = randRange(20, 55);
+    var spd = randRange(20, 55) * scale;
     var life = randRange(EXPLOSION_SMOKE_LIFE_MIN, EXPLOSION_SMOKE_LIFE_MAX);
     smoke.push({
       x: randRange(-6, 6), y: randRange(-10, 0),
       vx: Math.cos(ang) * spd * 0.4, vy: -Math.abs(Math.sin(ang) * spd) - 15,
-      r: randRange(6, 10), life: life, maxLife: life
+      r: randRange(6, 10) * scale, life: life, maxLife: life
     });
   }
   var debris = [];
-  for (var j = 0; j < EXPLOSION_DEBRIS_COUNT; j++) {
+  var debrisCount = Math.round(EXPLOSION_DEBRIS_COUNT * scale);
+  for (var j = 0; j < debrisCount; j++) {
     var a2 = randRange(0, Math.PI * 2);
-    var s2 = randRange(40, 110);
+    var s2 = randRange(40, 110) * scale;
     var life2 = randRange(EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX);
     debris.push({
       x: 0, y: -p.hitHeight * 0.4,
@@ -642,7 +646,55 @@ export function spawnExplosion(p) {
       life: life2, maxLife: life2, landed: false
     });
   }
-  p.wreck.explosion = { flashT: EXPLOSION_FLASH_TIME, smoke: smoke, debris: debris };
+  return { flashT: EXPLOSION_FLASH_TIME, flashScale: scale, smoke: smoke, debris: debris };
+}
+
+// "sparks" kind's pre-blast phase: a brief fountain of hot pixel sparks
+// sprayed from two points on the tank's body (left/right of its own
+// hitbox center), arcing down to the ground under their own gravity
+// before the shared blast takes over. Independent life timers per
+// particle rather than a hard phase cutoff, so a few stragglers can
+// still be finishing their fall right as the blast starts instead of
+// vanishing on the frame the phase switches.
+function buildSpraySparks(p) {
+  var sparks = [];
+  var groundY = p.hitHeight * 0.55; // same ground-relative offset EXPLOSION_DEBRIS lands at
+  [-1, 1].forEach(function (side) {
+    var ox = side * p.hitHalfWidth * 0.45;
+    for (var i = 0; i < EXPLOSION_SPARK_SPRAY_COUNT; i++) {
+      var life = randRange(EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX);
+      sparks.push({
+        x: ox + randRange(-3, 3), y: randRange(-6, 2),
+        vx: side * randRange(15, 45), vy: randRange(-30, 10),
+        life: life, maxLife: life, groundY: groundY, landed: false
+      });
+    }
+  });
+  return sparks;
+}
+
+// Called once, from combat.js: afterResolve(), right after initWreck() -
+// separate from the ongoing wreck smoke/sparks above (which start empty
+// and build up gradually; this is a sudden one-time burst that fades out
+// on its own and leaves p.wreck.explosion null again once it has). Picks
+// one of EXPLOSION_KINDS at random unless a specific kind is passed
+// (bench/debug hooks only - the real game never does). "classic" has no
+// pre-phase so its blast is built immediately; "sparks"/"wave" build their
+// pre-phase state now and defer building the shared blast until that
+// pre-phase's timer elapses, in updateWreckEffects() below.
+export function spawnExplosion(p, kind) {
+  if (!p.wreck) initWreck(p);
+  var chosenKind = (kind && EXPLOSION_KINDS[kind]) ? kind : EXPLOSION_KIND_KEYS[Math.floor(Math.random() * EXPLOSION_KIND_KEYS.length)];
+  var cfg = EXPLOSION_KINDS[chosenKind];
+  var explosion = {
+    kind: chosenKind, preKind: cfg.preKind, preDuration: cfg.preDuration,
+    preTimer: cfg.preDuration, blastScale: cfg.blastScale,
+    blast: null, spraySparks: null, wave: null
+  };
+  if (cfg.preKind === "sparks") explosion.spraySparks = buildSpraySparks(p);
+  else if (cfg.preKind === "wave") explosion.wave = { radius: 0 };
+  else explosion.blast = buildBlast(p, cfg.blastScale);
+  p.wreck.explosion = explosion;
 }
 
 // Called every frame for every eliminated tank regardless of game state
@@ -694,34 +746,61 @@ export function updateWreckEffects(p, dt) {
 
   if (w.explosion) {
     var ex = w.explosion;
-    ex.flashT = Math.max(0, ex.flashT - dt);
 
-    ex.smoke.forEach(function (s) {
-      s.life -= dt;
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      s.vy += 40 * dt; // billow decelerates/settles rather than rising forever
-      s.r += dt * 10;
-    });
-    ex.smoke = ex.smoke.filter(function (s) { return s.life > 0; });
+    if (ex.spraySparks) {
+      ex.spraySparks.forEach(function (s) {
+        s.life -= dt;
+        if (!s.landed) {
+          s.vy += EXPLOSION_SPARK_SPRAY_GRAVITY * dt;
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
+          if (s.y >= s.groundY) { s.y = s.groundY; s.landed = true; s.vx = 0; s.vy = 0; }
+        }
+      });
+      ex.spraySparks = ex.spraySparks.filter(function (s) { return s.life > 0; });
+    }
 
-    // Same ground-relative origin drawWreckEffects() anchors everything
-    // to (terrainHeightAt(p.x) - hitHeight*0.55) - so "the ground" in
-    // this local frame is +hitHeight*0.55 below that origin.
-    var groundOffsetY = p.hitHeight * 0.55;
-    ex.debris.forEach(function (d) {
-      d.life -= dt;
-      if (!d.landed) {
-        d.vy += EXPLOSION_DEBRIS_GRAVITY * dt;
-        d.x += d.vx * dt;
-        d.y += d.vy * dt;
-        if (d.y >= groundOffsetY) { d.y = groundOffsetY; d.landed = true; d.vx = 0; d.vy = 0; }
+    if (!ex.blast) {
+      // Still in the pre-blast phase ("sparks" or "wave") - count its
+      // timer down and grow the wave ring in step, then hand off to the
+      // shared blast once it elapses.
+      ex.preTimer -= dt;
+      if (ex.wave) {
+        ex.wave.radius = Math.min(EXPLOSION_WAVE_MAX_RADIUS, (1 - Math.max(0, ex.preTimer) / ex.preDuration) * EXPLOSION_WAVE_MAX_RADIUS);
       }
-    });
-    ex.debris = ex.debris.filter(function (d) { return d.life > 0; });
+      if (ex.preTimer <= 0) {
+        ex.blast = buildBlast(p, ex.blastScale);
+      }
+    } else {
+      ex.blast.flashT = Math.max(0, ex.blast.flashT - dt);
 
-    if (ex.flashT <= 0 && ex.smoke.length === 0 && ex.debris.length === 0) {
-      w.explosion = null;
+      ex.blast.smoke.forEach(function (s) {
+        s.life -= dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vy += 40 * dt; // billow decelerates/settles rather than rising forever
+        s.r += dt * 10;
+      });
+      ex.blast.smoke = ex.blast.smoke.filter(function (s) { return s.life > 0; });
+
+      // Same ground-relative origin drawWreckEffects() anchors everything
+      // to (terrainHeightAt(p.x) - hitHeight*0.55) - so "the ground" in
+      // this local frame is +hitHeight*0.55 below that origin.
+      var groundOffsetY = p.hitHeight * 0.55;
+      ex.blast.debris.forEach(function (d) {
+        d.life -= dt;
+        if (!d.landed) {
+          d.vy += EXPLOSION_DEBRIS_GRAVITY * dt;
+          d.x += d.vx * dt;
+          d.y += d.vy * dt;
+          if (d.y >= groundOffsetY) { d.y = groundOffsetY; d.landed = true; d.vx = 0; d.vy = 0; }
+        }
+      });
+      ex.blast.debris = ex.blast.debris.filter(function (d) { return d.life > 0; });
+
+      var blastDone = ex.blast.flashT <= 0 && ex.blast.smoke.length === 0 && ex.blast.debris.length === 0;
+      var sparksDone = !ex.spraySparks || ex.spraySparks.length === 0;
+      if (blastDone && sparksDone) w.explosion = null;
     }
   }
 }
@@ -763,34 +842,67 @@ export function drawWreckEffects(p) {
 
   if (w.explosion) {
     var ex = w.explosion;
-    if (ex.flashT > 0) {
-      var ft = ex.flashT / EXPLOSION_FLASH_TIME;
+
+    if (ex.wave && !ex.blast) {
+      var waveProgress = 1 - Math.max(0, ex.preTimer) / ex.preDuration;
       ctx.save();
-      ctx.globalAlpha = ft;
-      ctx.fillStyle = "#fff3c4";
+      ctx.globalAlpha = Math.max(0, 1 - waveProgress) * 0.85;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 4 * (1 - waveProgress * 0.6);
       ctx.beginPath();
-      ctx.arc(originX, originY, 10 + (1 - ft) * 40, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(originX, originY, ex.wave.radius, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
-    ex.smoke.forEach(function (s) {
-      var t = Math.max(0, s.life / s.maxLife);
-      ctx.save();
-      ctx.globalAlpha = t * 0.7;
-      ctx.fillStyle = "#111214";
-      ctx.beginPath();
-      ctx.arc(originX + s.x, originY + s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    });
-    ex.debris.forEach(function (d) {
-      var t = Math.max(0, d.life / d.maxLife);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, t * 1.5);
-      ctx.fillStyle = "#0a0a0a";
-      ctx.fillRect(originX + d.x - 1.5, originY + d.y - 1.5, 3, 3);
-      ctx.restore();
-    });
+
+    if (ex.spraySparks) {
+      ex.spraySparks.forEach(function (s) {
+        var t = Math.max(0, s.life / s.maxLife);
+        // Hot white when freshly sprayed, cooling toward yellow-orange as
+        // it ages - "yellowish to whitish" sparks, not a flat single color.
+        var g = Math.round(240 - (1 - t) * 60);
+        var b = Math.round(220 - (1 - t) * 200);
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, t * 1.4);
+        ctx.fillStyle = "rgb(255," + g + "," + b + ")";
+        ctx.beginPath();
+        ctx.arc(originX + s.x, originY + s.y, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    if (ex.blast) {
+      var bl = ex.blast;
+      if (bl.flashT > 0) {
+        var ft = bl.flashT / EXPLOSION_FLASH_TIME;
+        ctx.save();
+        ctx.globalAlpha = ft;
+        ctx.fillStyle = "#fff3c4";
+        ctx.beginPath();
+        ctx.arc(originX, originY, (10 + (1 - ft) * 40) * bl.flashScale, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      bl.smoke.forEach(function (s) {
+        var t = Math.max(0, s.life / s.maxLife);
+        ctx.save();
+        ctx.globalAlpha = t * 0.7;
+        ctx.fillStyle = "#111214";
+        ctx.beginPath();
+        ctx.arc(originX + s.x, originY + s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+      bl.debris.forEach(function (d) {
+        var t = Math.max(0, d.life / d.maxLife);
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, t * 1.5);
+        ctx.fillStyle = "#0a0a0a";
+        ctx.fillRect(originX + d.x - 1.5, originY + d.y - 1.5, 3, 3);
+        ctx.restore();
+      });
+    }
   }
 }
 
