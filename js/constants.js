@@ -307,15 +307,21 @@ export var EXPLOSION_DEBRIS_COUNT = 14;
 export var EXPLOSION_DEBRIS_LIFE_MIN = 0.9, EXPLOSION_DEBRIS_LIFE_MAX = 1.6;
 export var EXPLOSION_DEBRIS_GRAVITY = 220; // px/s^2 - independent of the bullet's GRAVITY so it's tunable separately
 
-// "sparks" kind's pre-blast phase: a violent, continuous rain of hot pixel
-// sparks from two points on the tank, spawned in quick little batches for
-// the whole pre-phase (not one static puff) so it reads as an ongoing
-// spray that the blast then cuts off, arcing down to the ground under
-// their own gravity before the shared blast above takes over.
+// "sparks" kind's pre-blast phase: a violent, continuous shower of hot
+// pixel sparks launched OUT of the tank at high speed (not a gentle rain
+// down to the ground - see EXPLOSION_SPARK_SPRAY_ANGLE_MIN/MAX below),
+// spawned in quick little batches for the whole pre-phase (not one static
+// puff) so it reads as an ongoing spray that the blast then cuts off.
 export var EXPLOSION_SPARK_SPRAY_BATCH_SIZE = 2; // sparks spawned per origin each spawn tick
 export var EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN = 0.035, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX = 0.06;
 export var EXPLOSION_SPARK_SPRAY_LIFE_MIN = 0.25, EXPLOSION_SPARK_SPRAY_LIFE_MAX = 0.5;
-export var EXPLOSION_SPARK_SPRAY_GRAVITY = 380; // px/s^2
+export var EXPLOSION_SPARK_SPRAY_GRAVITY = 380; // px/s^2 - arcs the flight, doesn't bring sparks to rest (they fade out via life first)
+// Launch angle measured up from horizontal, mirrored per side by spawnSparkBatch()'s
+// `side` - 20-85deg covers everywhere from "shoots out to the side" to
+// "shoots almost straight up above the tank", deliberately excluding
+// anything angled downward.
+export var EXPLOSION_SPARK_SPRAY_ANGLE_MIN = 20, EXPLOSION_SPARK_SPRAY_ANGLE_MAX = 85;
+export var EXPLOSION_SPARK_SPRAY_SPEED_MIN = 110, EXPLOSION_SPARK_SPRAY_SPEED_MAX = 260; // px/s - high velocity, dramatic pre-blast burst
 
 // "wave" kind's pre-blast phase: a single expanding white pressure-wave
 // ring, before a bigger-than-normal shared blast (see EXPLOSION_KINDS.wave

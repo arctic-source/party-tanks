@@ -13,6 +13,8 @@ import {
   EXPLOSION_DEBRIS_COUNT, EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX, EXPLOSION_DEBRIS_GRAVITY,
   EXPLOSION_SPARK_SPRAY_BATCH_SIZE, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX,
   EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX, EXPLOSION_SPARK_SPRAY_GRAVITY,
+  EXPLOSION_SPARK_SPRAY_ANGLE_MIN, EXPLOSION_SPARK_SPRAY_ANGLE_MAX,
+  EXPLOSION_SPARK_SPRAY_SPEED_MIN, EXPLOSION_SPARK_SPRAY_SPEED_MAX,
   EXPLOSION_WAVE_MAX_RADIUS, EXPLOSION_KINDS, EXPLOSION_KIND_KEYS
 } from "./constants.js";
 import { ctx } from "./canvas.js";
@@ -162,26 +164,34 @@ function buildBlast(p, scale) {
   return { flashT: EXPLOSION_FLASH_TIME, flashScale: scale, smoke: smoke, debris: debris };
 }
 
-// "sparks" kind's pre-blast phase: a violent, continuous rain of hot pixel
-// sparks from two points on the tank's body (left/right of its own hitbox
-// center), pushed into the given array - called repeatedly (once at spawn,
-// then on a short spawn timer in updateWreckEffects) for as long as the
-// pre-phase lasts, rather than building one static shower up front, so it
-// reads as an ongoing spray that the blast then cuts off. Each spark falls
-// under its own gravity to the ground; independent life timers per
-// particle rather than a hard phase cutoff, so a few stragglers can still
-// be finishing their fall right as the blast starts instead of vanishing
-// on the frame the phase switches.
+// "sparks" kind's pre-blast phase: a violent, continuous shower of hot
+// pixel sparks flying OUT of the tank at high speed - a wide cone of
+// launch angles per side (`EXPLOSION_SPARK_SPRAY_ANGLE_MIN/MAX`, measured
+// up from horizontal) covers everything from "shoots up above the tank"
+// to "shoots out to the side", never straight down, so it reads as a
+// dramatic pre-blast burst rather than the tank quietly leaking sparks
+// onto the ground. Pushed into the given array - called repeatedly (once
+// at spawn, then on a short spawn timer in updateWreckEffects) for as
+// long as the pre-phase lasts, rather than building one static burst up
+// front, so it reads as an ongoing violent spray that the blast then cuts
+// off. Gravity arcs each spark's flight but they simply fade out via
+// their own life timer rather than landing/resting on the ground - at
+// these speeds and this short a life they're gone well before they'd
+// settle, so a ground-collision step would never actually trigger.
+// Independent life timers per particle rather than a hard phase cutoff,
+// so a few stragglers can still be mid-flight right as the blast starts
+// instead of vanishing on the frame the phase switches.
 function spawnSparkBatch(p, sparks) {
-  var groundY = p.hitHeight * 0.55; // same ground-relative offset EXPLOSION_DEBRIS lands at
   [-1, 1].forEach(function (side) {
     var ox = side * p.hitHalfWidth * 0.45;
     for (var i = 0; i < EXPLOSION_SPARK_SPRAY_BATCH_SIZE; i++) {
       var life = randRange(EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX);
+      var ang = randRange(EXPLOSION_SPARK_SPRAY_ANGLE_MIN, EXPLOSION_SPARK_SPRAY_ANGLE_MAX) * Math.PI / 180;
+      var spd = randRange(EXPLOSION_SPARK_SPRAY_SPEED_MIN, EXPLOSION_SPARK_SPRAY_SPEED_MAX);
       sparks.push({
         x: ox + randRange(-3, 3), y: randRange(-6, 2),
-        vx: side * randRange(25, 70), vy: randRange(-55, 5),
-        life: life, maxLife: life, groundY: groundY, landed: false
+        vx: side * Math.cos(ang) * spd, vy: -Math.sin(ang) * spd,
+        life: life, maxLife: life
       });
     }
   });
@@ -281,12 +291,9 @@ export function updateWreckEffects(p, dt) {
       }
       ex.spraySparks.forEach(function (s) {
         s.life -= dt;
-        if (!s.landed) {
-          s.vy += EXPLOSION_SPARK_SPRAY_GRAVITY * dt;
-          s.x += s.vx * dt;
-          s.y += s.vy * dt;
-          if (s.y >= s.groundY) { s.y = s.groundY; s.landed = true; s.vx = 0; s.vy = 0; }
-        }
+        s.vy += EXPLOSION_SPARK_SPRAY_GRAVITY * dt;
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
       });
       ex.spraySparks = ex.spraySparks.filter(function (s) { return s.life > 0; });
     }

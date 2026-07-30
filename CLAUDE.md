@@ -662,18 +662,29 @@ These came out of real back-and-forth with the user — don't casually
     called once immediately at spawn *and then again on a short repeating
     timer* (`EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN/MAX`, ~35-60ms)
     for as long as the `preDuration` (0.55s) lasts, so it reads as a
-    violent, continuous rain rather than one static puff - don't collapse
+    violent, continuous spray rather than one static puff - don't collapse
     this back to a single one-shot burst built entirely at spawn time,
     that was tried first and read as a brief flicker instead of a
     sustained spray. Spawning stops the instant `ex.blast` gets built
     (see below) - "ended by a tank explosion" - though already-flying
-    sparks keep falling/fading on their own independent life timer
+    sparks keep flying/fading on their own independent life timer
     (`EXPLOSION_SPARK_SPRAY_LIFE_MIN/MAX`) rather than being cut off
-    mid-air, so a straggler can still land the same frame the blast
-    starts. Each spark falls under `EXPLOSION_SPARK_SPRAY_GRAVITY` to a
-    ground line (`hitHeight*0.55` below the wreck-damage origin - the
-    same ground-relative offset `EXPLOSION_DEBRIS_GRAVITY` already lands
-    debris at) and stops there. Color interpolates per-particle from
+    mid-air, so a straggler can still be in flight the same frame the
+    blast starts. Each spark launches at high speed
+    (`EXPLOSION_SPARK_SPRAY_SPEED_MIN/MAX`, 110-260px/s) at a launch angle
+    of `EXPLOSION_SPARK_SPRAY_ANGLE_MIN/MAX` (20-85deg up from horizontal,
+    mirrored outward per side) - deliberately never angled downward, so
+    every spark either arcs up above the tank or shoots out to the side,
+    never straight at the ground. `EXPLOSION_SPARK_SPRAY_GRAVITY` arcs
+    that flight but sparks are never brought to rest on the ground -
+    they simply fade out via their own life timer mid-flight, which at
+    these speeds/lifetimes is always well before they'd fall back to
+    tank height. This replaced an earlier version where sparks launched
+    at low, mostly-downward velocity and came to rest at a ground line -
+    that read as the tank quietly leaking sparks onto the dirt, not the
+    dramatic pre-blast burst that was asked for; don't reintroduce a
+    ground-collision/rest step for this kind without re-deriving why it
+    undersells the moment. Color interpolates per-particle from
     near-white at spawn to yellow-orange as it ages (`t = life/maxLife`
     drives the interpolation) - "yellowish to whitish," not a flat
     single-tone spark.
@@ -834,7 +845,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v25`). **Bump this version any time you change
+  (currently `party-tanks-v26`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every
