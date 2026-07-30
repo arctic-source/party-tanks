@@ -2,7 +2,7 @@
 // runtime - things that change per match (WORLD_W, playerStartXs, etc.)
 // live in store.js instead.
 
-export var PLAYER_SPACING = 1200; // world px between adjacent players at map-size 1x
+export var PLAYER_SPACING = 800; // world px between adjacent players at map-size 1x - 2/3 of the original 1200, the map felt too big
 export var WING_MARGIN = 500; // scenery/panning buffer beyond the outermost player, each side
 export var MAP_SIZE_MULTIPLIER = 1.0; // future map-size selector (Small/Large) will drive this
 export var ARENA_BUFFER = 300; // slack beyond the outermost player still treated as "the arena"
