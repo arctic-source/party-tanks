@@ -12,7 +12,7 @@ import {
   onPointerDown, onPointerMove, onPointerUp
 } from "./camera.js";
 import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
-import { generateScenery, generateBgTrees, generateBgPyramids, generateBgOrchardTrees, drawScenery, sceneryHitAt } from "./scenery.js";
+import { generateScenery, generateBgTrees, generateBgPyramids, generateBgOrchardTrees, generateBgSkyline, updateSceneryEffects, drawScenery, sceneryHitAt } from "./scenery.js";
 import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank } from "./tanks.js";
@@ -65,6 +65,13 @@ export function startMatch() {
   generateBgOrchardTrees();
   var pyramidLayer = store.activeMap.bgLayers.find(function (l) { return l.shape === "pyramids"; });
   generateBgPyramids(pyramidLayer ? (pyramidLayer.count || 3) : 3);
+  // One independent building set per "skyline"-shaped layer (a map can use
+  // the shape more than once, at different densities, for a far/near city
+  // depth effect) - null for every other shape, read by index in
+  // background.js: drawBackground()'s dispatch loop.
+  store.bgSkylineSets = store.activeMap.bgLayers.map(function (l) {
+    return l.shape === "skyline" ? generateBgSkyline(l.count || 12) : null;
+  });
   generateClouds();
   store.held.left = false;
   store.held.right = false;
@@ -202,6 +209,10 @@ export function update(dt) {
   store.players.forEach(function (p) {
     if (!p.alive) updateWreckEffects(p, dt);
   });
+  // Ambient scenery effects (e.g. Neon Scrapyard's junk-pile sparks) -
+  // same "runs every frame regardless of state" treatment as wreck effects
+  // above, since this is background life, not a turn-gated mechanic.
+  updateSceneryEffects(dt);
 
   if (store.state === "aim") {
     var p = store.players[store.active];

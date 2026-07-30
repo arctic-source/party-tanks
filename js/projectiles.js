@@ -5,12 +5,23 @@
 import { store } from "./store.js";
 import { ctx } from "./canvas.js";
 
+// A thin light outline around the dark fill so the bullet stays visible
+// against any background - a flat black fill alone can nearly vanish
+// against a dark map (e.g. Neon Scrapyard's night sky/asphalt) even
+// though it read fine against every map's lighter sky/dirt tones. Keeping
+// the black fill (not recoloring the bullet per map) means it still looks
+// like "the same bullet" everywhere - only the outline exists for contrast.
 export function drawBullet() {
   if (!store.bullet) return;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+  ctx.lineWidth = 1.2 / store.camZoom;
   ctx.fillStyle = "#1a1a1a";
   ctx.beginPath();
   ctx.arc(store.bullet.x, store.bullet.y, 4, 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function drawFlash() {

@@ -283,7 +283,7 @@ These came out of real back-and-forth with the user — don't casually
   MAPS`), not a fixed back/front pair - any number of independently
   parallaxed layers, drawn back-to-front in array order.** (`background.js:
   drawBackground()` loops it.) Each layer needs `shape` (`"mountains"` /
-  `"pyramids"` / `"treeLine"`), `parallax`, `alpha`, `color`, and
+  `"pyramids"` / `"treeLine"` / `"skyline"` / `"fence"`), `parallax`, `alpha`, `color`, and
   `baseYFrac` (fraction of `VIEW_H` - background layers are drawn in
   plain screen space, not the world zoom/pan transform, so `baseYFrac` is
   a fixed screen position regardless of camera zoom; only `parallax`
@@ -335,6 +335,47 @@ These came out of real back-and-forth with the user — don't casually
   reuses the same 3-circle cluster trick `drawTreeLineLayer` uses, so the
   foreground trees and the background tree-line read as the same species
   at different distances, not two unrelated tree designs.
+- **`shape: "skyline"` can appear more than once in one map's `bgLayers`,
+  each with independently-generated buildings - not one recolored copy.**
+  Neon Scrapyard uses it twice (`scenery.js: generateBgSkyline(count)`
+  called once per skyline-shaped layer in `main.js: startMatch()`, each
+  result assigned to `store.bgSkylineSets[layerIndex]` - a plain array
+  indexed by layer position, not fixed `far`/`near` field names, so a
+  future map could use it a different number of times without a store
+  schema change). `background.js: drawSkylineLayer()` draws each
+  building's silhouette, then a second pass of lit windows in
+  `windowColor` - window positions are derived deterministically via
+  `pseudoRandom(buildingIndex, windowIndex)`, not re-rolled every frame,
+  or they'd visibly flicker at 60fps. `shape: "fence"`
+  (`drawFenceLayer()`) is the one shape with no generated array at all -
+  evenly-spaced posts and a sagging wire between them, computed purely
+  from the parallax offset modulo a fixed post spacing - deliberately not
+  a re-tuned `"mountains"` layer (unlike Autumn Orchard's hedge) because a
+  fence needs actual vertical posts, which a sine wave can't produce.
+- **A scenery type can have ambient effects that run regardless of its
+  alive/burning/ash state** (`SCENERY_TYPES[key].ambientSpark`, currently
+  only `junkPile`). `scenery.js: updateSceneryEffects(dt)` - called
+  unconditionally every frame from `main.js: update()`, same "runs
+  through every game phase" treatment as `updateWreckEffects()` - is a
+  no-op unless the active map's scenery type sets that flag, then spawns
+  an occasional (`1.5-4s` between sparks, not a constant shower) tiny
+  pink/cyan spark per item, stored on the item itself (`t.sparks`/
+  `t.sparkTimer`, allocated in `makeSceneryItem()` for every scenery type
+  even though only `junkPile` ever uses them - cheap enough that gating
+  the allocation itself isn't worth it, same reasoning as generating
+  every map's unused bg arrays). This is a different mechanism from the
+  burning/ash state machine above - a junk pile never burns
+  (`burnable: false`) but still isn't fully static, and don't try to
+  route this through the burn state machine instead; they're unrelated.
+- **The bullet has a thin light outline, not just a flat dark fill**
+  (`projectiles.js: drawBullet()`) - added specifically because Neon
+  Scrapyard's dark night palette made the plain `#1a1a1a` fill nearly
+  invisible mid-flight, even though it read fine against every other
+  map's lighter sky/dirt. The fix is universal (every map gets the
+  outline now, not just this one) and keeps the same dark fill color, so
+  the bullet still looks like "the same bullet" everywhere - don't give a
+  specific map a differently-colored bullet instead, that would make the
+  one thing a player tracks every shot inconsistent between maps.
 - **Player config (names/colors) persists via `localStorage`**
   (`PLAYER_CONFIG_KEY` in `constants.js`), loaded once at module init in
   `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` (`4`) are editable;
@@ -877,7 +918,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v28`). **Bump this version any time you change
+  (currently `party-tanks-v29`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

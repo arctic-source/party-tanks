@@ -10,7 +10,14 @@ import { terrainHeightAt } from "./terrain.js";
 // time, not stored per-item. A single match only ever has one scenery
 // type on the ground at once.
 export function makeSceneryItem(x) {
-  return { x: x, state: "alive", burnTurnsLeft: 0, scale: 0.95 + Math.random() * 0.55 };
+  return {
+    x: x, state: "alive", burnTurnsLeft: 0, scale: 0.95 + Math.random() * 0.55,
+    // Only meaningful for a type with SCENERY_TYPES[key].ambientSpark set
+    // (currently just junkPile) - harmless, unused arrays/timers on every
+    // other map's items, same "cheap to allocate regardless" convention
+    // as the background generators below.
+    sparks: [], sparkTimer: randRange(1, 3)
+  };
 }
 
 // Circle-hit test against every currently-alive scenery item, at a single
@@ -118,6 +125,27 @@ export function generateBgPyramids(count) {
   store.bgPyramids = pyramids;
 }
 
+// Returns a NEW array of buildings rather than writing directly to
+// store (unlike the other bg generators above) - a map can use the
+// "skyline" shape twice, at different densities/colors, for a layered
+// far/near city depth effect, so main.js: startMatch() calls this once
+// per skyline-shaped layer and assigns each result to
+// store.bgSkylineSets[layerIndex] itself. `windows` is a per-building
+// count only - background.js: drawSkylineLayer derives each window's
+// actual position deterministically (pseudoRandom seeded off index), so
+// they don't re-randomize (flicker) every frame.
+export function generateBgSkyline(count) {
+  var buildings = [];
+  var cx = 0;
+  for (var i = 0; i < count; i++) {
+    var w = 40 + Math.random() * 70;
+    var h = 60 + Math.random() * 170;
+    buildings.push({ rx: cx + w / 2, w: w, h: h, windows: randInt(3, 9) });
+    cx += w + 4 + Math.random() * 18; // small gaps, mostly touching for a dense skyline
+  }
+  return buildings;
+}
+
 // A simple stacked-triangle conifer icon (evokes the pine emoji shape
 // without depending on the platform's emoji font/colors).
 export function drawPineTree(x, groundY, h, foliageColor, trunkColor) {
@@ -189,6 +217,62 @@ export function drawAutumnTree(x, groundY, h, foliageColor, trunkColor) {
   });
 }
 
+// A jagged, irregular blob (crushed metal, not a clean geometric shape)
+// with a bent antenna/pipe poking out the top - the one silhouette detail
+// that reads as "junk" rather than a rock or stump - plus a rim-light
+// stroke in accentColor so it picks up a bit of the map's neon glow.
+export function drawJunkPile(x, groundY, h, color, accentColor) {
+  var w = h * 0.9;
+  var pts = [
+    [-w * 0.5, 0], [-w * 0.42, -h * 0.35], [-w * 0.15, -h * 0.55],
+    [w * 0.1, -h * 0.42], [w * 0.48, -h * 0.5], [w * 0.5, -h * 0.1],
+    [w * 0.32, 0]
+  ];
+  ctx.beginPath();
+  ctx.moveTo(x + pts[0][0], groundY + pts[0][1]);
+  for (var i = 1; i < pts.length; i++) ctx.lineTo(x + pts[i][0], groundY + pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+
+  ctx.strokeStyle = "#54545c";
+  ctx.lineWidth = h * 0.05;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x - w * 0.1, groundY - h * 0.5);
+  ctx.lineTo(x - w * 0.05, groundY - h * 0.85);
+  ctx.lineTo(x + w * 0.08, groundY - h * 0.95);
+  ctx.stroke();
+}
+
+// Occasional spark bursts from every alive junk pile (SCENERY_TYPES[key]
+// .ambientSpark gates this generically, not a hardcoded key check) -
+// always-on ambient life for a scenery type that never burns/changes
+// state otherwise, same idea as a wreck's ongoing smoke/sparks but on
+// intact scenery instead of a destroyed tank. Called every frame
+// regardless of turn/game state, same as updateWreckEffects().
+export function updateSceneryEffects(dt) {
+  var sceneryType = SCENERY_TYPES[store.activeMap.scenery];
+  if (!sceneryType.ambientSpark) return;
+  var baseH = sceneryType.baseHeight;
+  store.scenery.forEach(function (t) {
+    t.sparkTimer -= dt;
+    if (t.sparkTimer <= 0) {
+      var life = randRange(0.15, 0.35);
+      t.sparks.push({
+        x: randRange(-6, 6) * t.scale, y: -randRange(0.3, 0.55) * baseH * t.scale,
+        life: life, maxLife: life,
+        color: Math.random() < 0.5 ? "#ff4fc4" : "#5be8ff"
+      });
+      t.sparkTimer = randRange(1.5, 4); // infrequent - flickers of life, not a constant shower
+    }
+    t.sparks = t.sparks.filter(function (s) { s.life -= dt; return s.life > 0; });
+  });
+}
+
 export function drawSceneryItem(t) {
   var sx = t.x;
   var groundY = terrainHeightAt(t.x);
@@ -210,6 +294,19 @@ export function drawSceneryItem(t) {
     } else {
       drawAutumnTree(sx, groundY + 1, h, "#d9822e", "#5b3a22");
     }
+  } else if (key === "junkPile") {
+    var accent = pseudoRandom(sx) < 0.5 ? "#ff4fc4" : "#5be8ff";
+    drawJunkPile(sx, groundY + 1, h, "#3a3a42", accent);
+    t.sparks.forEach(function (s) {
+      var st = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.globalAlpha = st;
+      ctx.fillStyle = s.color;
+      ctx.beginPath();
+      ctx.arc(sx + s.x, groundY + s.y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
   } else {
     // pineTree (also the fallback for any future burnable type that
     // hasn't earned its own branch yet)

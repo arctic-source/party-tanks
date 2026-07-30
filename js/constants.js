@@ -129,6 +129,19 @@ export var SCENERY_TYPES = {
     canopyFrac: 0.62, // a round canopy sits higher relative to height than pine's stacked triangles
     radiusFrac: 0.42, // wider than pine (0.30) - a broad round canopy, not a spike
     burnable: true
+  },
+  junkPile: {
+    name: "Junk Pile",
+    baseHeight: 60,
+    canopyFrac: 0.48,
+    radiusFrac: 0.34,
+    burnable: false,
+    // Ambient sparks fire occasionally from every alive (i.e. always, since
+    // this type never burns) item of this type, regardless of turn/game
+    // state - see scenery.js: updateSceneryEffects(). Purely cosmetic, same
+    // "always-on background life" idea as a wreck's ongoing smoke/sparks,
+    // just on scenery instead of a destroyed tank.
+    ambientSpark: true
   }
 };
 
@@ -149,18 +162,24 @@ export var BURN_TURNS = 3;
 // layers, not a fixed pair - each one independently parallaxed
 // (background.js: drawBackground() loops it, pairing store.mountainSeeds[i]
 // with each layer index). Every layer needs `shape` (one of "mountains" /
-// "pyramids" / "treeLine"), `parallax` (0 = fixed to the sky, higher =
-// moves faster while panning), `alpha`, `color`, and `baseYFrac` (fraction
-// of VIEW_H the shape's base sits at - lower fraction = higher up/further
-// away, matching that farther layers should sit higher on screen than
-// nearer ones). "mountains" additionally needs `ampFrac`/`freq1`/`freq2`
-// (peak height/wobble - a low ampFrac + high freq reads as a dense low
-// hedge, not just a mountain range, so "hedge" isn't a separate shape) and
-// optional `withDecor` (draws store.bgTrees pine silhouettes on the ridge -
-// forest-specific, leave off elsewhere). "pyramids" additionally needs
-// `count`. "treeLine" (background.js: drawTreeLineLayer) draws
-// store.bgOrchardTrees - a scattered row of round autumn-canopy clusters -
-// and needs nothing extra beyond the shared fields.
+// "pyramids" / "treeLine" / "skyline" / "fence"), `parallax` (0 = fixed to
+// the sky, higher = moves faster while panning), `alpha`, `color`, and
+// `baseYFrac` (fraction of VIEW_H the shape's base sits at - lower
+// fraction = higher up/further away, matching that farther layers should
+// sit higher on screen than nearer ones). "mountains" additionally needs
+// `ampFrac`/`freq1`/`freq2` (peak height/wobble - a low ampFrac + high
+// freq reads as a dense low hedge, not just a mountain range, so "hedge"
+// isn't a separate shape) and optional `withDecor` (draws store.bgTrees
+// pine silhouettes on the ridge - forest-specific, leave off elsewhere).
+// "pyramids" additionally needs `count`. "treeLine" (background.js:
+// drawTreeLineLayer) draws store.bgOrchardTrees - a scattered row of
+// round autumn-canopy clusters - and needs nothing extra beyond the
+// shared fields. "skyline" (drawSkylineLayer) needs `count` (building
+// count) and `windowColor`, drawing store.bgSkylineSets[layerIndex] - a
+// map can use it twice (far/near) for a layered city depth effect, each
+// with its own independently-generated buildings. "fence" (drawFenceLayer)
+// is fully procedural (evenly-spaced posts + a sagging wire, no generated
+// array needed) and needs nothing extra beyond the shared fields.
 export var MAPS = [
   {
     key: "chillForest",
@@ -209,6 +228,32 @@ export var MAPS = [
       { shape: "mountains", parallax: 0.16, alpha: 0.30, color: "#b5622e", baseYFrac: 0.66, ampFrac: 0.11, freq1: 0.0016, freq2: 0.004 },
       { shape: "treeLine", parallax: 0.25, alpha: 0.7, color: "#d9822e", baseYFrac: 0.735 },
       { shape: "mountains", parallax: 0.36, alpha: 0.42, color: "#8a4a22", baseYFrac: 0.775, ampFrac: 0.018, freq1: 0.03, freq2: 0.07 }
+    ]
+  },
+  {
+    key: "neonScrapyard",
+    name: "Neon Scrapyard",
+    scenery: "junkPile",
+    sky: { dark: [0x05, 0x04, 0x10], top: [0x22, 0x10, 0x30], bot: [0x4a, 0x1f, 0x3a] },
+    ground: {
+      surfaceTop: "#3a3a42", surfaceMid: "#242429", surfaceDeep: "#0c0c0f",
+      // crustTop/crustBottom form the usual gradient band (terrain.js
+      // reuses the exact same grass-band rendering, just recolored) - here
+      // it reads as a glowing pink edge strip instead of grass; detailColor
+      // recolors the scattered tuft ticks cyan, so the two neon accent
+      // colors both show up in the terrain itself, not just the background.
+      crustTop: "#ff2ea6", crustBottom: "#7a1258", detailColor: "#5be8ff"
+    },
+    // A night map: a barely-visible magenta smog haze, two independently-
+    // generated skyline layers (far dim/cool, near bright/warm) for real
+    // city depth rather than one recolored copy, and a chain-link fence
+    // right at the terrain line - the most background-code-heavy map yet
+    // (two genuinely new shapes, not just mountains re-tuned).
+    bgLayers: [
+      { shape: "mountains", parallax: 0.05, alpha: 0.16, color: "#7a3a6a", baseYFrac: 0.55, ampFrac: 0.08, freq1: 0.0015, freq2: 0.004 },
+      { shape: "skyline", parallax: 0.14, alpha: 0.6, color: "#1c1622", baseYFrac: 0.70, windowColor: "#7adcff", count: 16 },
+      { shape: "skyline", parallax: 0.26, alpha: 0.9, color: "#120c16", baseYFrac: 0.77, windowColor: "#ff4fc4", count: 9 },
+      { shape: "fence", parallax: 0.42, alpha: 0.85, color: "#1a1a1e", baseYFrac: 0.80 }
     ]
   }
 ];

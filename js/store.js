@@ -24,6 +24,7 @@ export var store = {
   bgTrees: [], // small pine-tree silhouettes decorating the near mountain ridge - forest-specific, not part of the generic scenery system
   bgPyramids: [],
   bgOrchardTrees: [], // scattered round autumn-canopy clusters for the "treeLine" background shape - orchard-specific, not part of the generic scenery system
+  bgSkylineSets: [], // one entry per store.activeMap.bgLayers index - an array of buildings for "skyline"-shape layers, null for every other shape - regenerated each match
   clouds: [],
   mountainSeeds: [], // one per store.activeMap.bgLayers entry, regenerated each match (main.js: startMatch()) - sized to the active map's layer count, not a fixed pair
 
