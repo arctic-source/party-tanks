@@ -23,9 +23,9 @@ export var store = {
   scenery: [],
   bgTrees: [], // small pine-tree silhouettes decorating the near mountain ridge - forest-specific, not part of the generic scenery system
   bgPyramids: [],
+  bgOrchardTrees: [], // scattered round autumn-canopy clusters for the "treeLine" background shape - orchard-specific, not part of the generic scenery system
   clouds: [],
-  mountainSeed1: 0,
-  mountainSeed2: 0,
+  mountainSeeds: [], // one per store.activeMap.bgLayers entry, regenerated each match (main.js: startMatch()) - sized to the active map's layer count, not a fixed pair
 
   // Match/game.
   matchActive: false,

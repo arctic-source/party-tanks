@@ -127,6 +127,46 @@ function drawPyramidLayer(parallaxFactor, alpha, color, baseY) {
   ctx.restore();
 }
 
+// An orchard-specific near/mid background shape (unlike mountains/pyramids,
+// which both work for any map recolored) - a scattered row of round,
+// clustered-blob canopies (store.bgOrchardTrees, generated once per match
+// in scenery.js: generateBgOrchardTrees). Each tree blends between two
+// derived autumn tones per its own toneT so the row isn't one flat color.
+function drawTreeLineLayer(parallaxFactor, alpha, color, baseY) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  var rgb = hexToRgb(color);
+  var warmRgb = lerpColor(rgb, [255, 214, 120], 0.35);
+  var coolRgb = lerpColor(rgb, [90, 30, 10], 0.3);
+  var parallax = store.camCenterX * parallaxFactor;
+
+  for (var i = 0; i < store.bgOrchardTrees.length; i++) {
+    var t = store.bgOrchardTrees[i];
+    var sx = t.rx - parallax;
+    var r = 26 * t.scale;
+    if (sx + r < 0 || sx - r > store.VIEW_W) continue;
+
+    var blend = lerpColor(coolRgb, warmRgb, t.toneT);
+    ctx.fillStyle = "rgb(" + blend[0] + "," + blend[1] + "," + blend[2] + ")";
+    [[-r * 0.4, 0], [r * 0.4, 0], [0, -r * 0.35]].forEach(function (o) {
+      ctx.beginPath();
+      ctx.arc(sx + o[0], baseY - r * 0.5 + o[1], r * 0.62, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = "rgba(40,20,10,0.5)";
+    ctx.fillRect(sx - r * 0.06, baseY - r * 0.15, r * 0.12, r * 0.5);
+  }
+  ctx.restore();
+}
+
+// Draws store.activeMap.bgLayers back-to-front (array order IS draw
+// order, same convention as store.bgPyramids) - any number of layers, not
+// a fixed back/front pair, each with its own parallaxFactor so they pan
+// at genuinely different speeds. store.mountainSeeds[i] is paired with
+// layer index i regardless of that layer's shape (unused for
+// non-"mountains" layers, harmless) - sized to the active map's layer
+// count each match in main.js: startMatch(), not a fixed pair of fields.
 export function drawBackground() {
   var map = store.activeMap;
   var halfH = (store.VIEW_H / 2) / store.camZoom;
@@ -141,13 +181,16 @@ export function drawBackground() {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, store.VIEW_W, store.VIEW_H);
 
-  drawMountainLayer(store.mountainSeed1, 0.12, 0.22, map.bgBack.color, store.VIEW_H * 0.62, store.VIEW_H * 0.20, 0.0021, 0.006, false);
-
-  if (map.bgFront.shape === "pyramids") {
-    drawPyramidLayer(0.22, 0.6, map.bgFront.color, store.VIEW_H * 0.70);
-  } else {
-    drawMountainLayer(store.mountainSeed2, 0.28, 0.32, map.bgFront.color, store.VIEW_H * 0.72, store.VIEW_H * 0.15, 0.004, 0.011, !!map.bgFront.withDecor);
-  }
+  map.bgLayers.forEach(function (layer, i) {
+    var baseY = store.VIEW_H * layer.baseYFrac;
+    if (layer.shape === "pyramids") {
+      drawPyramidLayer(layer.parallax, layer.alpha, layer.color, baseY);
+    } else if (layer.shape === "treeLine") {
+      drawTreeLineLayer(layer.parallax, layer.alpha, layer.color, baseY);
+    } else {
+      drawMountainLayer(store.mountainSeeds[i], layer.parallax, layer.alpha, layer.color, baseY, store.VIEW_H * layer.ampFrac, layer.freq1, layer.freq2, !!layer.withDecor);
+    }
+  });
 }
 
 function drawCloud(c) {

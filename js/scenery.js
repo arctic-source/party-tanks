@@ -77,6 +77,20 @@ export function generateBgTrees() {
   store.bgTrees = bgTrees;
 }
 
+// A scattered row (not one tight cluster, unlike generateBgPyramids below -
+// a "tree line" reads as a spread-out row of trees, not a single formation),
+// for the "treeLine" background shape. toneT picks where each tree lands
+// between two derived autumn tones (background.js: drawTreeLineLayer) so
+// the line isn't a flat single color.
+export function generateBgOrchardTrees() {
+  var trees = [];
+  var count = randInt(14, 22);
+  for (var i = 0; i < count; i++) {
+    trees.push({ rx: Math.random() * 3000, scale: 0.7 + Math.random() * 0.7, toneT: Math.random() });
+  }
+  store.bgOrchardTrees = trees;
+}
+
 // One clustered formation (a Giza-style trio), not independently scattered
 // pyramids - each one smaller than the last and offset to the right just
 // enough to overlap its predecessor, so it reads as "in front of" the
@@ -155,6 +169,26 @@ export function drawCactus(x, groundY, h, color) {
   capsule(x, groundY - trunkH, groundY, trunkW);
 }
 
+// A round, clustered-canopy silhouette (three overlapping circles, the
+// same "blobby cluster" trick background.js: drawTreeLineLayer uses for
+// the distant orchard row) on a trunk - deliberately broader/rounder than
+// drawPineTree's stacked triangles, so an orchard tree reads as a
+// different species at a glance, not just a recolored pine.
+export function drawAutumnTree(x, groundY, h, foliageColor, trunkColor) {
+  var trunkH = h * 0.32, trunkW = h * 0.14;
+  ctx.fillStyle = trunkColor;
+  ctx.fillRect(x - trunkW / 2, groundY - trunkH, trunkW, trunkH);
+
+  var r = h * 0.36;
+  var cy = groundY - trunkH - r * 0.5;
+  ctx.fillStyle = foliageColor;
+  [[-r * 0.45, r * 0.15], [r * 0.45, r * 0.15], [0, -r * 0.35]].forEach(function (o) {
+    ctx.beginPath();
+    ctx.arc(x + o[0], cy + o[1], r * 0.62, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 export function drawSceneryItem(t) {
   var sx = t.x;
   var groundY = terrainHeightAt(t.x);
@@ -164,6 +198,18 @@ export function drawSceneryItem(t) {
   ctx.save();
   if (key === "cactus") {
     drawCactus(sx, groundY + 1, h, "#3f8f46");
+  } else if (key === "autumnTree") {
+    if (t.state === "burning") {
+      ctx.shadowColor = "rgba(255,110,20,0.95)";
+      ctx.shadowBlur = 16;
+      drawAutumnTree(sx, groundY + 1, h, "#c94a1e", "#5b3a22");
+      ctx.shadowBlur = 0;
+    } else if (t.state === "ash") {
+      ctx.globalAlpha = 0.7;
+      drawAutumnTree(sx, groundY + 1, h, "#4a4a4a", "#3a3a3a");
+    } else {
+      drawAutumnTree(sx, groundY + 1, h, "#d9822e", "#5b3a22");
+    }
   } else {
     // pineTree (also the fallback for any future burnable type that
     // hasn't earned its own branch yet)

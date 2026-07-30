@@ -122,6 +122,13 @@ export var SCENERY_TYPES = {
     canopyFrac: 0.50,
     radiusFrac: 0.22, // narrower than a pine's canopy - a slender saguaro silhouette
     burnable: false
+  },
+  autumnTree: {
+    name: "Autumn Tree",
+    baseHeight: 78,
+    canopyFrac: 0.62, // a round canopy sits higher relative to height than pine's stacked triangles
+    radiusFrac: 0.42, // wider than pine (0.30) - a broad round canopy, not a spike
+    burnable: true
   }
 };
 
@@ -137,10 +144,23 @@ export var BURN_TURNS = 3;
 // shape (flat rooftops, hazards you can fall/drown in, etc.) is a bigger
 // change than this table supports today - don't force one in here
 // without redesigning terrain.js's generator to be pluggable per map.
-// bgBack is always the far mountain-silhouette layer (background.js:
-// drawMountainLayer, just recolored per map); bgFront can instead use
-// shape:"pyramids" (background.js: drawPyramidLayer) for a map that
-// wants a visually distinct near background layer.
+//
+// bgLayers is an ARRAY, drawn back-to-front in order - any number of
+// layers, not a fixed pair - each one independently parallaxed
+// (background.js: drawBackground() loops it, pairing store.mountainSeeds[i]
+// with each layer index). Every layer needs `shape` (one of "mountains" /
+// "pyramids" / "treeLine"), `parallax` (0 = fixed to the sky, higher =
+// moves faster while panning), `alpha`, `color`, and `baseYFrac` (fraction
+// of VIEW_H the shape's base sits at - lower fraction = higher up/further
+// away, matching that farther layers should sit higher on screen than
+// nearer ones). "mountains" additionally needs `ampFrac`/`freq1`/`freq2`
+// (peak height/wobble - a low ampFrac + high freq reads as a dense low
+// hedge, not just a mountain range, so "hedge" isn't a separate shape) and
+// optional `withDecor` (draws store.bgTrees pine silhouettes on the ridge -
+// forest-specific, leave off elsewhere). "pyramids" additionally needs
+// `count`. "treeLine" (background.js: drawTreeLineLayer) draws
+// store.bgOrchardTrees - a scattered row of round autumn-canopy clusters -
+// and needs nothing extra beyond the shared fields.
 export var MAPS = [
   {
     key: "chillForest",
@@ -151,8 +171,10 @@ export var MAPS = [
       surfaceTop: "#7a5636", surfaceMid: "#5c3f26", surfaceDeep: "#241811",
       crustTop: "#68c751", crustBottom: "#2f7a34", detailColor: "#2f7a34"
     },
-    bgBack: { color: "#7793ab" },
-    bgFront: { shape: "mountains", color: "#5c7a99", withDecor: true }
+    bgLayers: [
+      { shape: "mountains", parallax: 0.12, alpha: 0.22, color: "#7793ab", baseYFrac: 0.62, ampFrac: 0.20, freq1: 0.0021, freq2: 0.006 },
+      { shape: "mountains", parallax: 0.28, alpha: 0.32, color: "#5c7a99", baseYFrac: 0.72, ampFrac: 0.15, freq1: 0.004, freq2: 0.011, withDecor: true }
+    ]
   },
   {
     key: "desert",
@@ -163,8 +185,31 @@ export var MAPS = [
       surfaceTop: "#d9b25c", surfaceMid: "#a97c34", surfaceDeep: "#4a3015",
       crustTop: "#e8cd82", crustBottom: "#c9a24a", detailColor: "#9a7530"
     },
-    bgBack: { color: "#8a6a42" },
-    bgFront: { shape: "pyramids", color: "#caa25c", count: 3 }
+    bgLayers: [
+      { shape: "mountains", parallax: 0.12, alpha: 0.22, color: "#8a6a42", baseYFrac: 0.62, ampFrac: 0.20, freq1: 0.0021, freq2: 0.006 },
+      { shape: "pyramids", parallax: 0.22, alpha: 0.6, color: "#caa25c", baseYFrac: 0.70, count: 3 }
+    ]
+  },
+  {
+    key: "autumnOrchard",
+    name: "Autumn Orchard",
+    scenery: "autumnTree",
+    sky: { dark: [0x2e, 0x22, 0x3c], top: [0x8f, 0x6e, 0x84], bot: [0xf2, 0xc9, 0xa8] },
+    ground: {
+      surfaceTop: "#8a5a34", surfaceMid: "#6b4322", surfaceDeep: "#2e1d10",
+      crustTop: "#c9962e", crustBottom: "#9a6f1e", detailColor: "#9a6f1e"
+    },
+    // Four layers, not the usual two, deliberately more ambitious than
+    // the other maps' backgrounds: a barely-moving haze ridge, gentler/
+    // rounder rolling hills than a mountain range, a treeLine layer of
+    // orchard canopies, and a fast, low, dense "hedge" - which is just
+    // the mountains shape with tiny ampFrac + high freq, not a new shape.
+    bgLayers: [
+      { shape: "mountains", parallax: 0.06, alpha: 0.14, color: "#a98fa0", baseYFrac: 0.58, ampFrac: 0.10, freq1: 0.0018, freq2: 0.005 },
+      { shape: "mountains", parallax: 0.16, alpha: 0.30, color: "#b5622e", baseYFrac: 0.66, ampFrac: 0.11, freq1: 0.0016, freq2: 0.004 },
+      { shape: "treeLine", parallax: 0.25, alpha: 0.7, color: "#d9822e", baseYFrac: 0.735 },
+      { shape: "mountains", parallax: 0.36, alpha: 0.42, color: "#8a4a22", baseYFrac: 0.775, ampFrac: 0.018, freq1: 0.03, freq2: 0.07 }
+    ]
   }
 ];
 export var MAP_KEY = "partytanks.map.v1";

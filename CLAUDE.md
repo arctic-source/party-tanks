@@ -279,30 +279,62 @@ These came out of real back-and-forth with the user — don't casually
   can fall/drown in, etc.) is a bigger change than this table supports
   and would need `generateTerrain` itself to become pluggable per map;
   don't force one into this table without that redesign.
-- **A map's background can use a different near-layer SHAPE, not just
-  different colors.** (`background.js`.) `bgBack` is always the existing
-  sine-wave mountain silhouette (`drawMountainLayer`), just recolored -
-  it doubles as convincing distant dunes for the desert map with zero
-  new code. `bgFront` can instead set `shape: "pyramids"` to use
-  `drawPyramidLayer`, drawing `store.bgPyramids` - one Giza-style
-  cluster (`scenery.js: generateBgPyramids`), not independently
-  scattered triangles: each entry is deliberately smaller than the
-  previous and offset just enough right to overlap it, and array order
-  IS draw order, so index 0 (biggest) paints first/furthest-back and
-  each later, smaller pyramid paints on top - "in front of" the one
-  before it. Don't reintroduce independent random placement per
-  pyramid; the overlap is the point, not something to avoid. Each
-  pyramid is drawn as two triangles, not one - a lit face and a shaded
-  face sharing the apex and a ridge line down to `py.ridgeFrac` along
-  the base (stored per-pyramid for variety) - both computed from the
-  exact same `sx`/`w`/`h` every frame, so they can't drift apart under
-  panning without a second, separately-tracked object; don't split them
-  into two entries in `store.bgPyramids` to "simplify" this, that would
-  reintroduce exactly the desync risk this avoids. Both
-  `store.bgTrees` and `store.bgPyramids` are generated unconditionally
-  every match regardless of which the active map's `bgFront` actually
-  draws - simpler than gating generation itself, and cheap enough that
-  generating the unused one is not worth the extra branch.
+- **A map's background is an ARRAY of layers (`bgLayers` in `constants.js:
+  MAPS`), not a fixed back/front pair - any number of independently
+  parallaxed layers, drawn back-to-front in array order.** (`background.js:
+  drawBackground()` loops it.) Each layer needs `shape` (`"mountains"` /
+  `"pyramids"` / `"treeLine"`), `parallax`, `alpha`, `color`, and
+  `baseYFrac` (fraction of `VIEW_H` - background layers are drawn in
+  plain screen space, not the world zoom/pan transform, so `baseYFrac` is
+  a fixed screen position regardless of camera zoom; only `parallax`
+  against `camCenterX` moves a layer horizontally, and only where actual
+  terrain height dips below a layer's `baseYFrac` does that layer peek
+  through - this was true for the original 2-layer system too, the array
+  just generalizes the mechanism instead of hardcoding exactly two calls).
+  `store.mountainSeeds[i]` pairs with layer index `i` (regenerated to
+  match `bgLayers.length` every match in `main.js: startMatch()`) rather
+  than two fixed `mountainSeed1`/`mountainSeed2` fields - don't reintroduce
+  a fixed pair, a map can have more than two mountain-shape layers (see
+  Autumn Orchard below). `shape: "mountains"` is still the same sine-wave
+  silhouette (`drawMountainLayer`) recolored - it's also what a "hedge" or
+  a barely-visible haze-ridge layer is, just with different `ampFrac`/
+  `freq1`/`freq2` tuning (tiny amplitude + high frequency reads as a dense
+  low hedge; low alpha + low amplitude reads as a hazy distant ridge) -
+  neither is a new shape, don't add one for a tuning difference.
+  `shape: "pyramids"` (`drawPyramidLayer`, drawing `store.bgPyramids` - one
+  Giza-style cluster from `scenery.js: generateBgPyramids`, not
+  independently scattered triangles: each entry deliberately smaller than
+  the previous and offset just enough right to overlap it, array order IS
+  draw order so index 0 is biggest/furthest-back) and `shape: "treeLine"`
+  (`drawTreeLineLayer`, drawing `store.bgOrchardTrees` - a *scattered row*
+  from `scenery.js: generateBgOrchardTrees`, unlike the pyramids' one tight
+  cluster, since a tree line should read as spread out, not one formation;
+  each tree is a 3-circle "blobby cluster" canopy blended between two
+  derived autumn tones via its own `toneT` so the row isn't flat-colored)
+  are the two shapes that need real per-shape draw code. Each pyramid is
+  drawn as two triangles, not one - a lit face and a shaded face sharing
+  the apex and a ridge line down to `py.ridgeFrac` along the base (stored
+  per-pyramid for variety) - both computed from the exact same `sx`/`w`/`h`
+  every frame, so they can't drift apart under panning without a second,
+  separately-tracked object; don't split them into two entries in
+  `store.bgPyramids` to "simplify" this, that would reintroduce exactly
+  the desync risk this avoids. `store.bgTrees`, `store.bgPyramids`, and
+  `store.bgOrchardTrees` are all generated unconditionally every match
+  regardless of which the active map's `bgLayers` actually use - simpler
+  than gating generation itself, and cheap enough that generating two
+  unused ones is not worth the extra branches. Autumn Orchard is the map
+  that actually exercises the array's generality: 4 layers, not the usual
+  2 - a nearly-invisible haze ridge (`parallax: 0.06`, `alpha: 0.14`),
+  gentler/rounder rolling hills than a mountain range (`parallax: 0.16`,
+  low `ampFrac`), the `treeLine` orchard row (`parallax: 0.25`), and a
+  fast, low hedge (`parallax: 0.36`, tiny `ampFrac`, high `freq1/freq2`) -
+  each panning at a genuinely different speed, deliberately more ambitious
+  than the other two maps' 2-layer backgrounds. Its foreground scenery
+  (`autumnTree` in `SCENERY_TYPES`, drawn by `scenery.js: drawAutumnTree`)
+  is a broader, rounder canopy silhouette than pine's stacked triangles -
+  reuses the same 3-circle cluster trick `drawTreeLineLayer` uses, so the
+  foreground trees and the background tree-line read as the same species
+  at different distances, not two unrelated tree designs.
 - **Player config (names/colors) persists via `localStorage`**
   (`PLAYER_CONFIG_KEY` in `constants.js`), loaded once at module init in
   `playerConfig.js`. Only slots `0..ACTIVE_SLOTS-1` (`4`) are editable;
@@ -845,7 +877,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v26`). **Bump this version any time you change
+  (currently `party-tanks-v27`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

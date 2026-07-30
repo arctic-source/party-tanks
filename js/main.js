@@ -12,7 +12,7 @@ import {
   onPointerDown, onPointerMove, onPointerUp
 } from "./camera.js";
 import { generateTerrain, terrainHeightAt, drawTerrain } from "./terrain.js";
-import { generateScenery, generateBgTrees, generateBgPyramids, drawScenery, sceneryHitAt } from "./scenery.js";
+import { generateScenery, generateBgTrees, generateBgPyramids, generateBgOrchardTrees, drawScenery, sceneryHitAt } from "./scenery.js";
 import { stepBallistic, shuffleArray } from "./utils.js";
 import { generateClouds, drawBackground, drawClouds } from "./background.js";
 import { newTank, drawTank } from "./tanks.js";
@@ -55,11 +55,16 @@ export function startMatch() {
   store.bullet = null;
   store.impactFlash = null;
   store.lastImpact = store.players.map(function () { return null; });
-  store.mountainSeed1 = Math.random() * 1000;
-  store.mountainSeed2 = Math.random() * 1000;
+  store.mountainSeeds = store.activeMap.bgLayers.map(function () { return Math.random() * 1000; });
   generateScenery(store.players.map(function (p) { return p.x; }));
+  // Both generated unconditionally every match regardless of which the
+  // active map's bgLayers actually use - simpler than gating generation
+  // itself, and cheap enough that generating the unused one isn't worth
+  // the extra branch (same call as bgTrees/bgPyramids already made).
   generateBgTrees();
-  generateBgPyramids(store.activeMap.bgFront.count || 3);
+  generateBgOrchardTrees();
+  var pyramidLayer = store.activeMap.bgLayers.find(function (l) { return l.shape === "pyramids"; });
+  generateBgPyramids(pyramidLayer ? (pyramidLayer.count || 3) : 3);
   generateClouds();
   store.held.left = false;
   store.held.right = false;
