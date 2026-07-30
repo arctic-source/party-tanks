@@ -643,7 +643,7 @@ These came out of real back-and-forth with the user — don't casually
 - **Three explosion kinds share one blast implementation - same pattern
   as `TANK_TYPES`/`AI_LEVELS`/`MAPS`, not three bespoke explosions.**
   (`EXPLOSION_KINDS` in `constants.js`: `classic`, `sparks`, `wave`; each
-  entry is just `{preKind, preDuration, blastScale}`.) `tanks.js:
+  entry is just `{preKind, preDuration, blastScale}`.) `wreckage.js:
   spawnExplosion(p, kind)` picks one at random (uniform) per kill unless
   told otherwise - the real game never passes `kind`, only bench/debug
   hooks do. The shared piece is `buildBlast(p, scale)` - today's flash +
@@ -656,19 +656,39 @@ These came out of real back-and-forth with the user — don't casually
   single-kind implementation this replaced. `sparks` and `wave` each add
   one new, genuinely different pre-phase that plays *before* the shared
   blast is built:
-  - `sparks`: `buildSpraySparks(p)` fires a brief fountain of small hot
+  - `sparks`: `spawnSparkBatch(p, sparks)` pushes a small batch of hot
     pixels from two fixed points on the tank's own hitbox
-    (`±hitHalfWidth*0.45`), each falling under `EXPLOSION_SPARK_SPRAY_GRAVITY`
-    to a ground line (`hitHeight*0.55` below the wreck-damage origin -
-    the same ground-relative offset `EXPLOSION_DEBRIS_GRAVITY` already
-    lands debris at) and stopping there. Color interpolates per-particle
-    from near-white at spawn to yellow-orange as it ages (`t = life/
-    maxLife` drives the interpolation) - "yellowish to whitish," not a
-    flat single-tone spark.
+    (`±hitHalfWidth*0.45`) into the explosion's `spraySparks` array - it's
+    called once immediately at spawn *and then again on a short repeating
+    timer* (`EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN/MAX`, ~35-60ms)
+    for as long as the `preDuration` (0.55s) lasts, so it reads as a
+    violent, continuous rain rather than one static puff - don't collapse
+    this back to a single one-shot burst built entirely at spawn time,
+    that was tried first and read as a brief flicker instead of a
+    sustained spray. Spawning stops the instant `ex.blast` gets built
+    (see below) - "ended by a tank explosion" - though already-flying
+    sparks keep falling/fading on their own independent life timer
+    (`EXPLOSION_SPARK_SPRAY_LIFE_MIN/MAX`) rather than being cut off
+    mid-air, so a straggler can still land the same frame the blast
+    starts. Each spark falls under `EXPLOSION_SPARK_SPRAY_GRAVITY` to a
+    ground line (`hitHeight*0.55` below the wreck-damage origin - the
+    same ground-relative offset `EXPLOSION_DEBRIS_GRAVITY` already lands
+    debris at) and stops there. Color interpolates per-particle from
+    near-white at spawn to yellow-orange as it ages (`t = life/maxLife`
+    drives the interpolation) - "yellowish to whitish," not a flat
+    single-tone spark.
   - `wave`: a single expanding white ring (`wave.radius`, driven by
     `preTimer` counting down against `preDuration`) up to
     `EXPLOSION_WAVE_MAX_RADIUS`, fading out as it grows - a pressure-wave
-    look - before the (scaled-up) blast lands.
+    look - before the (scaled-up) blast lands. `preDuration` is
+    deliberately short (0.12s, down from an earlier 0.3s) so the ring and
+    the blast land almost on top of each other rather than with a
+    noticeable gap - "wave, then almost instantly the big explosion," not
+    "wave, pause, explosion." The ring still visibly grows to its full
+    radius in that window (the growth math is `progress = 1 -
+    preTimer/preDuration`, which always reaches 1.0 exactly as `preTimer`
+    hits zero regardless of how short `preDuration` is) - it's simply
+    compressed into a much faster sweep, not shrunk or skipped.
   Both pre-phases use their own `preTimer` (set to `cfg.preDuration` at
   spawn) rather than reusing `store.eliminationTimer`/`eliminationPhase` -
   those drive the *camera* hold (see the elimination-sequence decision
@@ -814,7 +834,7 @@ verifying changes is a headless Playwright script:
 - GitHub Pages serves straight from the deploy branch — pushing to it *is*
   deploying. There's no staging step.
 - `sw.js` uses network-first caching with a versioned `CACHE_NAME`
-  (currently `party-tanks-v24`). **Bump this version any time you change
+  (currently `party-tanks-v25`). **Bump this version any time you change
   which files exist or change caching-relevant behavior** — otherwise
   clients can end up serving a stale mix of old/new files from cache.
   Also keep `sw.js`'s `ASSETS` list in sync with the actual file set (every

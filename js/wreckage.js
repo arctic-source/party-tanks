@@ -11,7 +11,8 @@ import {
   WRECK_SPARK_INTERVAL_MIN, WRECK_SPARK_INTERVAL_MAX, WRECK_SPARK_LIFE_MIN, WRECK_SPARK_LIFE_MAX, WRECK_SPARK_MAX,
   EXPLOSION_FLASH_TIME, EXPLOSION_SMOKE_COUNT, EXPLOSION_SMOKE_LIFE_MIN, EXPLOSION_SMOKE_LIFE_MAX,
   EXPLOSION_DEBRIS_COUNT, EXPLOSION_DEBRIS_LIFE_MIN, EXPLOSION_DEBRIS_LIFE_MAX, EXPLOSION_DEBRIS_GRAVITY,
-  EXPLOSION_SPARK_SPRAY_COUNT, EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX, EXPLOSION_SPARK_SPRAY_GRAVITY,
+  EXPLOSION_SPARK_SPRAY_BATCH_SIZE, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX,
+  EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX, EXPLOSION_SPARK_SPRAY_GRAVITY,
   EXPLOSION_WAVE_MAX_RADIUS, EXPLOSION_KINDS, EXPLOSION_KIND_KEYS
 } from "./constants.js";
 import { ctx } from "./canvas.js";
@@ -161,28 +162,29 @@ function buildBlast(p, scale) {
   return { flashT: EXPLOSION_FLASH_TIME, flashScale: scale, smoke: smoke, debris: debris };
 }
 
-// "sparks" kind's pre-blast phase: a brief fountain of hot pixel sparks
-// sprayed from two points on the tank's body (left/right of its own
-// hitbox center), arcing down to the ground under their own gravity
-// before the shared blast takes over. Independent life timers per
-// particle rather than a hard phase cutoff, so a few stragglers can
-// still be finishing their fall right as the blast starts instead of
-// vanishing on the frame the phase switches.
-function buildSpraySparks(p) {
-  var sparks = [];
+// "sparks" kind's pre-blast phase: a violent, continuous rain of hot pixel
+// sparks from two points on the tank's body (left/right of its own hitbox
+// center), pushed into the given array - called repeatedly (once at spawn,
+// then on a short spawn timer in updateWreckEffects) for as long as the
+// pre-phase lasts, rather than building one static shower up front, so it
+// reads as an ongoing spray that the blast then cuts off. Each spark falls
+// under its own gravity to the ground; independent life timers per
+// particle rather than a hard phase cutoff, so a few stragglers can still
+// be finishing their fall right as the blast starts instead of vanishing
+// on the frame the phase switches.
+function spawnSparkBatch(p, sparks) {
   var groundY = p.hitHeight * 0.55; // same ground-relative offset EXPLOSION_DEBRIS lands at
   [-1, 1].forEach(function (side) {
     var ox = side * p.hitHalfWidth * 0.45;
-    for (var i = 0; i < EXPLOSION_SPARK_SPRAY_COUNT; i++) {
+    for (var i = 0; i < EXPLOSION_SPARK_SPRAY_BATCH_SIZE; i++) {
       var life = randRange(EXPLOSION_SPARK_SPRAY_LIFE_MIN, EXPLOSION_SPARK_SPRAY_LIFE_MAX);
       sparks.push({
         x: ox + randRange(-3, 3), y: randRange(-6, 2),
-        vx: side * randRange(15, 45), vy: randRange(-30, 10),
+        vx: side * randRange(25, 70), vy: randRange(-55, 5),
         life: life, maxLife: life, groundY: groundY, landed: false
       });
     }
   });
-  return sparks;
 }
 
 // Called once, from combat.js: afterResolve(), right after initWreck() -
@@ -201,11 +203,17 @@ export function spawnExplosion(p, kind) {
   var explosion = {
     kind: chosenKind, preKind: cfg.preKind, preDuration: cfg.preDuration,
     preTimer: cfg.preDuration, blastScale: cfg.blastScale,
-    blast: null, spraySparks: null, wave: null
+    blast: null, spraySparks: null, sparkSpawnTimer: 0, wave: null
   };
-  if (cfg.preKind === "sparks") explosion.spraySparks = buildSpraySparks(p);
-  else if (cfg.preKind === "wave") explosion.wave = { radius: 0 };
-  else explosion.blast = buildBlast(p, cfg.blastScale);
+  if (cfg.preKind === "sparks") {
+    explosion.spraySparks = [];
+    spawnSparkBatch(p, explosion.spraySparks); // first batch immediately, so the rain starts on frame 1
+    explosion.sparkSpawnTimer = randRange(EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX);
+  } else if (cfg.preKind === "wave") {
+    explosion.wave = { radius: 0 };
+  } else {
+    explosion.blast = buildBlast(p, cfg.blastScale);
+  }
   p.wreck.explosion = explosion;
 }
 
@@ -260,6 +268,17 @@ export function updateWreckEffects(p, dt) {
     var ex = w.explosion;
 
     if (ex.spraySparks) {
+      // Keep raining fresh batches for as long as the pre-phase lasts -
+      // once the blast has been built (ex.blast set below), stop spawning
+      // new ones so the rain reads as "ended by" the explosion, though
+      // already-flying sparks keep falling/fading on their own life timer.
+      if (!ex.blast) {
+        ex.sparkSpawnTimer -= dt;
+        if (ex.sparkSpawnTimer <= 0) {
+          spawnSparkBatch(p, ex.spraySparks);
+          ex.sparkSpawnTimer = randRange(EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX);
+        }
+      }
       ex.spraySparks.forEach(function (s) {
         s.life -= dt;
         if (!s.landed) {

@@ -307,12 +307,15 @@ export var EXPLOSION_DEBRIS_COUNT = 14;
 export var EXPLOSION_DEBRIS_LIFE_MIN = 0.9, EXPLOSION_DEBRIS_LIFE_MAX = 1.6;
 export var EXPLOSION_DEBRIS_GRAVITY = 220; // px/s^2 - independent of the bullet's GRAVITY so it's tunable separately
 
-// "sparks" kind's pre-blast phase: a brief fountain of hot pixel sparks
-// sprayed from two points on the tank, arcing down to the ground under
-// their own gravity, before the shared blast above takes over.
-export var EXPLOSION_SPARK_SPRAY_COUNT = 14; // per origin point (2 origins total)
+// "sparks" kind's pre-blast phase: a violent, continuous rain of hot pixel
+// sparks from two points on the tank, spawned in quick little batches for
+// the whole pre-phase (not one static puff) so it reads as an ongoing
+// spray that the blast then cuts off, arcing down to the ground under
+// their own gravity before the shared blast above takes over.
+export var EXPLOSION_SPARK_SPRAY_BATCH_SIZE = 2; // sparks spawned per origin each spawn tick
+export var EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MIN = 0.035, EXPLOSION_SPARK_SPRAY_SPAWN_INTERVAL_MAX = 0.06;
 export var EXPLOSION_SPARK_SPRAY_LIFE_MIN = 0.25, EXPLOSION_SPARK_SPRAY_LIFE_MAX = 0.5;
-export var EXPLOSION_SPARK_SPRAY_GRAVITY = 320; // px/s^2
+export var EXPLOSION_SPARK_SPRAY_GRAVITY = 380; // px/s^2
 
 // "wave" kind's pre-blast phase: a single expanding white pressure-wave
 // ring, before a bigger-than-normal shared blast (see EXPLOSION_KINDS.wave
@@ -328,7 +331,11 @@ export var EXPLOSION_WAVE_MAX_RADIUS = 75; // world px
 // kill unless told otherwise.
 export var EXPLOSION_KINDS = {
   classic: { preKind: null, preDuration: 0, blastScale: 1 },
-  sparks: { preKind: "sparks", preDuration: 0.35, blastScale: 1 },
-  wave: { preKind: "wave", preDuration: 0.3, blastScale: 1.45 }
+  // Long enough for the continuous spark rain to read as "for a moment",
+  // cut off by the blast starting.
+  sparks: { preKind: "sparks", preDuration: 0.55, blastScale: 1 },
+  // Short - the wave should land almost the same instant as the (bigger)
+  // blast, not with a noticeable pause between them.
+  wave: { preKind: "wave", preDuration: 0.12, blastScale: 1.45 }
 };
 export var EXPLOSION_KIND_KEYS = Object.keys(EXPLOSION_KINDS);
